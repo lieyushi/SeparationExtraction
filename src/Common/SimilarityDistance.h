@@ -63,6 +63,17 @@ public:
 	static const double getChiTestOfCurvatures(const Eigen::VectorXd& first, const Eigen::VectorXd& second,
 				const std::pair<int,int>& closest, const bool& useSegments);
 
+	/* based on signature-based segmentation to get segments for input streamlines */
+	static void computeSegments(std::vector<Eigen::VectorXd>& lineSegments, std::vector<Eigen::VectorXd>& lineCurvatures,
+			std::vector<std::vector<int> >& segmentsToLines, int& accumulated,
+			const std::vector<Eigen::VectorXd>& streamlineVector);
+
+	/* get chi-test-distance given two curvature array */
+	static const double getChiTestPair(const Eigen::VectorXd& first, const Eigen::VectorXd& second);
+
+	/* get the streamline id given segment number */
+	static const int getStreamlineID(const int& segmentID, const std::vector<std::vector<int> >& segmentOfStreamlines);
+
 private:
 	/* a chi-test with two equal-size attribute arrays */
 	static const double getChiTest(const Eigen::VectorXd& first, const Eigen::VectorXd& second);

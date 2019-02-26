@@ -15,12 +15,11 @@
 #include <vtkPoints.h>
 #include <vtkCellArray.h>
 #include <vtkDoubleArray.h>
-#include <vtkPolyData.h>
 #include <vtkPointData.h>
 #include <vtkPolyLine.h>
 #include <vtkLookupTable.h>
 #include <vtkNamedColors.h>
-
+#include <vtkLight.h>
 
 #include <vtkLine.h>
 #include <vtkCell.h>

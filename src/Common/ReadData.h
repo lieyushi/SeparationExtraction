@@ -14,64 +14,21 @@
 #include <eigen3/Eigen/Dense>
 #include <eigen3/Eigen/Core>
 #include <eigen3/Eigen/SVD>
+#include "DataSet.h"
 
 using namespace std;
 using namespace Eigen;
 
-#define MINIMAL 1.0E-6
+#define MINIMAL 5.0E-3
 
-// a struct of vertex to record vector field values at vertex
-struct Vertex
+
+// a struct to showcase a point on the streamline with a given id
+struct StreamlinePoint
 {
-	double x, y, z;
-	double vx, vy, vz;
-	double v_magnitude;
+	Eigen::Vector3d coordinate;	// point coordinate
+	int id;	// streamline id
 
-	// default constructor
-	Vertex(): x(-1), y(-1), z(-1), vx(-1), vy(-1), vz(-1)
-	{
-		v_magnitude = 0.0;
-	}
-
-	// argument constructor I
-	Vertex(const double& x, const double& y, const double& z,
-		   const double& vx, const double& vy, const double& vz)
-		   : x(x), y(y), z(z), vx(vx), vy(vy), vz(vz)
-	{
-		v_magnitude = std::sqrt(vx*vx+vy*vy+vz*vz);
-	}
-
-	// argument constructor II
-	Vertex(const std::vector<double>& value): x(value[0]), y(value[1]), z(value[2]),
-			 vx(value[3]), vy(value[4]), vz(value[5])
-	{
-		v_magnitude = std::sqrt(vx*vx+vy*vy+vz*vz);
-	}
-
-	// argument constructor III
-	Vertex(const Eigen::Vector3d& pos, const Eigen::Vector3d& vel): x(pos(0)), y(pos(1)), z(pos(2)),
-			 vx(vel(0)), vy(vel(1)), vz(vel(2))
-	{
-		v_magnitude = std::sqrt(vx*vx+vy*vy+vz*vz);
-	}
-
-	// assignment operator
-	void assignValue(const std::vector<double>& value)
-	{
-		x = value[0];
-		y = value[1];
-		z = value[2];
-		vx = value[3];
-		vy = value[4];
-		vz = value[5];
-		v_magnitude = std::sqrt(vx*vx+vy*vy+vz*vz);
-	}
-};
-
-struct CoordinateLimits
-{
-	double inf, sup;
-	CoordinateLimits(): inf(DBL_MAX), sup(-DBL_MAX)
+	StreamlinePoint(const Eigen::Vector3d& point, const int& streamlineID): coordinate(point), id(streamlineID)
 	{}
 };
 
@@ -100,6 +57,9 @@ public:
 
 	// write vector values to the streamline tracer
 	void writeSeparationToStreamlines(const std::vector<int>& separationFlag, const string& flagName);
+
+	// read 3D streamlines from streamline data set
+	void readStreamlineFromFile(const string& fileName);
 
 	// storage of vertex information (coordinates and velocity components)
 	std::vector<Vertex> vertexVec;
@@ -138,6 +98,9 @@ private:
 	// stay in the range of the domain
 	bool stayInDomain(const Eigen::Vector3d& pos);
 
+	// whether stay away from existing point in the streamline far enough
+	bool isFarToStreamlines(const Eigen::Vector3d& nextPos, const int& id);
+
 	// coordinates limit
 	CoordinateLimits limits[3];
 
@@ -145,10 +108,12 @@ private:
 	string dataset_name;
 
 	// rectilinear grid information
-	int SIZE_SQRT;
-	double X_STEP, Y_STEP;
+	int X_RESOLUTION = -1, Y_RESOLUTION = -1, Z_RESOLUTION = -1;
+	double X_STEP = -1.0, Y_STEP = -1.0, Z_STEP = 1.0;
 
-
+	// spatial binning for checking whether current streamline points are close to existing points or not
+	std::vector<std::vector<StreamlinePoint> > spatialBins;
+	bool useSpatial = false;
 };
 
 #endif

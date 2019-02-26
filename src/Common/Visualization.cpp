@@ -115,9 +115,16 @@ void Visualization::renderStreamlines(const std::vector<Eigen::VectorXd>& stream
 		double dcolor[3];
 		colorLookupTable->GetColor(sValue, dcolor);
 		unsigned char color[3];
-		color[0] = 255*(1.0-dcolor[0]/1.0);
-		color[1] = 255*dcolor[1]/1.0;
-		color[2] = 255*(1.0-dcolor[2]/1.0);
+		if(sValue==-1)
+		{
+			color[0] = color[1] = color[2] = 128;
+		}
+		else
+		{
+			color[0] = 255*(1.0-dcolor[0]/1.0);
+			color[1] = 255*dcolor[1]/1.0;
+			color[2] = 255*(1.0-dcolor[2]/1.0);
+		}
 		for(int j=0; j<line.size()/3; ++j)
 		{
 			colors->InsertTuple3(cumulated+j, color[0], color[1], color[2]);
@@ -144,10 +151,20 @@ void Visualization::renderStreamlines(const std::vector<Eigen::VectorXd>& stream
 	vtkSmartPointer<vtkActor> actor = vtkSmartPointer<vtkActor>::New();
 	actor->SetMapper(mapper);
 
+	actor->GetProperty()->SetAmbient(0.3);
+	actor->GetProperty()->SetDiffuse(0.375);
+	actor->GetProperty()->SetSpecular(0.2);
+	actor->GetProperty()->SetSpecularPower(5.0);
+
 	vtkSmartPointer<vtkRenderer> renderer = vtkSmartPointer<vtkRenderer>::New();
 	renderer->AddActor(actor);
 	vtkSmartPointer<vtkNamedColors> namedColor = vtkSmartPointer<vtkNamedColors>::New();
 	renderer->SetBackground(namedColor->GetColor3d("SlateGray").GetData());
+
+//	vtkSmartPointer<vtkLight> light = vtkSmartPointer<vtkLight>::New();
+//	light->SetFocalPoint(0.5,0.5,0);
+//	light->SetPosition(0.875,1.6125,1);
+//	renderer->AddLight(light);
 
 	vtkSmartPointer<vtkRenderWindow> renWin = vtkSmartPointer<vtkRenderWindow>::New();
 	renWin->SetWindowName("Streamline Separation VTK");
@@ -156,7 +173,7 @@ void Visualization::renderStreamlines(const std::vector<Eigen::VectorXd>& stream
 	iren->SetRenderWindow(renWin);
 	renWin->AddRenderer(renderer);
 
-	renWin->SetSize(500, 500);
+	renWin->SetSize(700, 700);
 	renWin->Render();
 
 	vtkSmartPointer<vtkInteractorStyleTrackballCamera> style = vtkSmartPointer<vtkInteractorStyleTrackballCamera>::New();

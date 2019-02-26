@@ -39,6 +39,20 @@ void VectorField::traceStreamlines(const double& integrationStep, const int& max
 	std::cin >> seedingStrategy;
 	assert(seedingStrategy==0 || seedingStrategy==1);
 
+	// whether need to judge whether streamlines are too close to existing streamlines
+	int judgeClose;
+	std::cout << "Whether judge streamlines are too close to other streamlines? 0.No, 1.Yes." << std::endl;
+	std::cin >> judgeClose;
+	assert(judgeClose==0 || judgeClose==1);
+	useSpatial = (judgeClose==1);
+
+	if(useSpatial)
+	{
+		// direct apply the same resolution as in grid
+		spatialBins.clear();
+		spatialBins = std::vector<std::vector<StreamlinePoint> >(X_RESOLUTION*Y_RESOLUTION*Z_RESOLUTION);
+	}
+
 	std::vector<Vertex> seeds;
 
 	// uniform sampling strategy applied
@@ -122,9 +136,14 @@ void VectorField::readPlyFile(const string& fileName)
 		exit(1);
 	}
 
-	SIZE_SQRT = (int)std::sqrt(vertexCount);
-	X_STEP = (limits[0].sup-limits[0].inf)/(double)(SIZE_SQRT-1);
-	Y_STEP = (limits[1].sup-limits[1].inf)/(double)(SIZE_SQRT-1);
+	const int& size_sqrt = (int)std::sqrt(vertexCount);
+	X_RESOLUTION = size_sqrt;
+	Y_RESOLUTION = size_sqrt;
+	Z_RESOLUTION = 1;
+	X_STEP = (limits[0].sup-limits[0].inf)/(double)(X_RESOLUTION-1);
+	Y_STEP = (limits[1].sup-limits[1].inf)/(double)(Y_RESOLUTION-1);
+	if(Z_RESOLUTION>=2)
+		Z_STEP = (limits[2].sup-limits[2].inf)/(double)(Z_RESOLUTION-1);
 
 	std::cout << "File reading finishes!" << std::endl;
 }
@@ -175,9 +194,15 @@ void VectorField::readPlainFile(const string& fileName)
 		exit(1);
 	}
 
-	SIZE_SQRT = (int)std::sqrt(vertexCount);
-	X_STEP = (limits[0].sup-limits[0].inf)/(double)(SIZE_SQRT-1);
-	Y_STEP = (limits[1].sup-limits[1].inf)/(double)(SIZE_SQRT-1);
+	const int& size_sqrt = (int)std::sqrt(vertexCount);
+	X_RESOLUTION = size_sqrt;
+	Y_RESOLUTION = size_sqrt;
+	Z_RESOLUTION = 1;
+	X_STEP = (limits[0].sup-limits[0].inf)/(double)(X_RESOLUTION-1);
+	Y_STEP = (limits[1].sup-limits[1].inf)/(double)(Y_RESOLUTION-1);
+	if(Z_RESOLUTION>=2)
+		Z_STEP = (limits[2].sup-limits[2].inf)/(double)(Z_RESOLUTION-1);
+
 
 	std::cout << "File reading finishes!" << std::endl;
 }
@@ -204,32 +229,38 @@ void VectorField::printVectorFieldVTK()
     fout << "Volume example" << endl;
     fout << "ASCII" << endl;
     fout << "DATASET STRUCTURED_POINTS" << endl;
-    fout << "DIMENSIONS " << SIZE_SQRT << " " << SIZE_SQRT << " " << 1 << endl;
-    fout << "ASPECT_RATIO " << X_STEP << " " << Y_STEP << " " << 1.0 << endl;
+    fout << "DIMENSIONS " << X_RESOLUTION << " " << Y_RESOLUTION << " " << Z_RESOLUTION << endl;
+    fout << "ASPECT_RATIO " << X_STEP << " " << Y_STEP << " " << Z_STEP << endl;
     fout << "ORIGIN " << limits[0].inf << " " << limits[1].inf << " " << limits[2].inf << endl;
     fout << "POINT_DATA " << vertexCount << endl;
     fout << "SCALARS velocity_magnitude double 1" << endl;
     fout << "LOOKUP_TABLE velo_table" << endl;
 
-	for (int j = 0; j < SIZE_SQRT; ++j)
-	{
-		for (int k = 0; k < SIZE_SQRT; ++k)
+    const int& SLICE_NUMBER = Y_RESOLUTION*X_RESOLUTION;
+    for (int i = 0; i < Z_RESOLUTION; ++i)
+    {
+		for (int j = 0; j < Y_RESOLUTION; ++j)
 		{
-			fout << vertexVec[SIZE_SQRT*j+k].v_magnitude << endl;
+			for (int k = 0; k < X_RESOLUTION; ++k)
+			{
+				fout << vertexVec[SLICE_NUMBER*i+X_RESOLUTION*j+k].v_magnitude << endl;
+			}
 		}
-	}
+    }
     fout << "VECTORS velocityDirection double" << endl;
 
     Vertex vertex;
-	for (int j = 0; j < SIZE_SQRT; ++j)
-	{
-		for (int k = 0; k < SIZE_SQRT; ++k)
+    for (int i = 0; i < Z_RESOLUTION; ++i)
+    {
+		for (int j = 0; j < Y_RESOLUTION; ++j)
 		{
-			vertex = vertexVec[SIZE_SQRT*j+k];
-			fout << vertex.vx << " " << vertex.vy << " " << vertex.vz << endl;
+			for (int k = 0; k < X_RESOLUTION; ++k)
+			{
+				vertex = vertexVec[SLICE_NUMBER*i+X_RESOLUTION*j+k];
+				fout << vertex.vx << " " << vertex.vy << " " << vertex.vz << endl;
+			}
 		}
-	}
-
+    }
 	fout.close();
 }
 
@@ -255,13 +286,13 @@ bool VectorField::getInterpolatedVelocity(const Eigen::Vector3d& position, Eigen
 	// find four points that surrounding the target position
 	int x_index = int((position(0)-limits[0].inf)/X_STEP);
 	int y_index = int((position(1)-limits[1].inf)/Y_STEP);
-	if(x_index==SIZE_SQRT-1)
+	if(x_index==X_RESOLUTION-1)
 		x_index = x_index-1;
-	if(y_index==SIZE_SQRT-1)
+	if(y_index==Y_RESOLUTION-1)
 		y_index = y_index-1;
-	int bottom_left = SIZE_SQRT*y_index+x_index;
+	int bottom_left = X_RESOLUTION*y_index+x_index;
 	int bottom_right = bottom_left+1;
-	int top_left = bottom_left+SIZE_SQRT;
+	int top_left = bottom_left+X_RESOLUTION;
 	int top_right = top_left+1;
 
 	if(bottom_left>=vertexCount || bottom_left<0 || bottom_right>=vertexCount || bottom_right<0
@@ -294,12 +325,13 @@ void VectorField::traceStreamlinesBySeeds(const std::vector<Vertex>& seeds, cons
 										  const int& maxLength)
 {
 	streamlineVector = std::vector<Eigen::VectorXd>(seeds.size());
-#pragma omp parallel for schedule(static) num_threads(8)
+//#pragma omp parallel for schedule(static) num_threads(8)
 	for(int i=0; i<seeds.size(); ++i)
 	{
 		std::vector<Vertex> forwardTracing, backwardTracing;
 		Eigen::Vector3d position, velocity, nextPos;
 		int j = 0;
+
 		// forward tracing the streamlines
 		forwardTracing.push_back(seeds[i]);
 		do
@@ -312,8 +344,16 @@ void VectorField::traceStreamlinesBySeeds(const std::vector<Vertex>& seeds, cons
 			//	break;
 			if(!getInterpolatedVelocity(nextPos, velocity))
 				break;
+
+			// judge whether the point is far away from existing streamline points
+			// well, stay too close to existing streamlines, exit the loop
+			if(!isFarToStreamlines(nextPos, i))
+				break;
 			forwardTracing.push_back(Vertex(nextPos, velocity));
 			++j;
+		/*
+		 * check whether streamlines are close to already existing streamlines with spatial spinning
+		 */
 		}while(j<maxLength/2 && stayInDomain(nextPos) && forwardTracing.back().v_magnitude>=MINIMAL);
 
 		// backward tracing the streamlines
@@ -336,6 +376,12 @@ void VectorField::traceStreamlinesBySeeds(const std::vector<Vertex>& seeds, cons
 			//	break;
 			if(!getInterpolatedVelocity(nextPos, velocity))
 				break;
+
+			// judge whether the point is far away from existing streamline points
+			// well, stay too close to existing streamlines, exit the loop
+			if(!isFarToStreamlines(nextPos, i))
+				break;
+
 			backwardTracing.push_back(Vertex(nextPos, velocity));
 			++j;
 		}while(j<maxLength-forwardTracing.size() && stayInDomain(nextPos) && backwardTracing.back().v_magnitude>=MINIMAL);
@@ -647,3 +693,152 @@ void VectorField::writeSeparationToStreamlines(const std::vector<int>& separatio
 	}
 	fout.close();
 }
+
+
+// whether stay away from existing point in the streamline far enough
+bool VectorField::isFarToStreamlines(const Eigen::Vector3d& nextPos, const int& id)
+{
+	// sometimes we will not eliminate streamlines that are close enough
+	if(!useSpatial)
+		return true;
+	// find current spatial bin position
+	int x_current = int((nextPos(0)-limits[0].inf)/X_STEP);
+	int y_current = int((nextPos(1)-limits[1].inf)/Y_STEP);
+	int z_current = int((nextPos(2)-limits[2].inf)/Z_STEP);
+
+	// check whether the bin triple is not erroneous
+	assert(x_current>=0 && x_current<=X_RESOLUTION-1);
+	assert(y_current>=0 && y_current<=Y_RESOLUTION-1);
+	assert(z_current>=0 && z_current<=Z_RESOLUTION-1);
+
+	const int& SLICE_NUMBER = X_RESOLUTION*Y_RESOLUTION;
+	// check neighboring 8 bins and see whether inside there is close enough streamline points
+	int x, y, z;
+	std::vector<StreamlinePoint> cell;
+	for(int i=-1; i<=1; ++i)
+	{
+		z = z_current+i;
+		if(z>=0 && z<=Z_RESOLUTION-1)
+		{
+			for(int j=-1; j<=1; ++j)
+			{
+				y = y_current+j;
+				if(y>=0 && y<=Y_RESOLUTION-1)
+				{
+					for(int k=-1; k<=1; ++k)
+					{
+						x = x_current+k;
+						if(x>=0 && x<=X_RESOLUTION-1)
+						{
+							cell = spatialBins[SLICE_NUMBER*z+X_RESOLUTION*y+x];
+							for(auto &p:cell)
+							{
+								// close to existing streamlines
+								if(id!=p.id && (nextPos-p.coordinate).norm()<MINIMAL)
+								{
+									return false;
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	spatialBins[SLICE_NUMBER*z_current+X_RESOLUTION*y_current+x_current].push_back
+			(StreamlinePoint(nextPos, id));
+	return true;
+}
+
+
+// read 3D streamlines from streamline data set
+void VectorField::readStreamlineFromFile(const string& fileName)
+{
+	dataset_name = fileName;
+	vertexCount = 0;
+	std::ifstream fin(fileName.c_str(), ios::in);
+	if(!fin)
+	{
+		std::cout << "Error creating files!" << std::endl;
+		exit(1);
+	}
+	stringstream ss;
+
+	std::vector<double> tempVec;
+
+	string line, part;
+
+	/* read partial number of streamlines */
+	//int MAXNUMBER;
+	//std::cout << "Input maximal trajectory numbers: " << std::endl;
+	//std::cin >> MAXNUMBER;
+	// set currentNumber to record how many streamlines u want to read in
+	//int currentNumber = 0;
+
+
+	/* read partial dimensions of curves */
+	//int MAXDIMENSION;
+	//std::cout << "Input maximal dimensions: " << std::endl;
+	//std::cin >> MAXDIMENSION;
+	// set currentNumber to record how many streamlines u want to read in
+	//int currentDimensions;
+
+	std::vector<double> vec(3);
+	double temp;
+	while(getline(fin, line) /* && currentNumber < MAXNUMBER*/)
+	{
+		//currentDimensions = 0;
+		int tag = 0, count = 0;
+		ss.str(line);
+		while(ss>>part /*&& currentDimensions<3*MAXDIMENSION*/)
+		{
+			/* operations below would remove duplicate vertices because that would damage our computation */
+			temp = atof(part.c_str());
+			if(tag>=3)
+			{
+				if(count<3)
+				{
+					vec[count] = temp;
+					++tag;
+					++count;
+				}
+				if(count==3)
+				{
+					int size = tempVec.size();
+					if(!(abs(vec[0]-tempVec[size-3])<1.0e-5
+							&&abs(vec[1]-tempVec[size-2])<1.0e-5
+							&&abs(vec[2]-tempVec.back())<1.0e-5))
+					{
+						tempVec.push_back(vec[0]);
+						tempVec.push_back(vec[1]);
+						tempVec.push_back(vec[2]);
+					}
+					count = 0;
+				}
+				continue;
+			}
+			tempVec.push_back(temp);
+			++tag;
+			//currentDimensions++;
+		}
+		/* accept only streamlines with at least three vertices */
+		if(tempVec.size()/3>2)
+		{
+			streamlineVector.push_back(Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>
+			(tempVec.data(), tempVec.size()));
+			vertexCount+=tempVec.size();
+		}
+		tempVec.clear();
+		ss.clear();
+		ss.str("");
+		//currentNumber++;
+	}
+	fin.close();
+
+
+	vertexCount/=3;
+	std::cout << "File reader has been completed, and it toally has " << streamlineVector.size() << " trajectories and "
+			  << vertexCount << " vertices!" << std::endl;
+}
+

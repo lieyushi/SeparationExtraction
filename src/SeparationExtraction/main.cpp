@@ -8,6 +8,12 @@
 #include "SeparationExtraction.h"
 #include "Visualization.h"
 
+void extractForPlyFile(const int& argc, char* argv[], VectorField& vf);
+
+void performExtraction(VectorField& vf, SeparationExtraction& se);
+
+void readStreamlines(const int& argc, char* argv[], VectorField& vf);
+
 int main(int argc, char* argv[])
 {
 	if(argc!=2)
@@ -16,9 +22,45 @@ int main(int argc, char* argv[])
 		exit(1);
 	}
 
+	/* multiple input */
+	std::cout << "What type the file is? 1.ply vector field, 2.3D vector field, 3.streamline data sets." << std::endl;
+	int datasetOption;
+	std::cin >> datasetOption;
+	assert(1<=datasetOption && datasetOption<=3);
+
 	VectorField vf;
+	SeparationExtraction se;
+
+	switch(datasetOption)
+	{
+	/* input is .ply file, and need to trace streamlines first */
+	case 1:
+		extractForPlyFile(argc, argv, vf);
+		break;
+
+	case 2:
+		break;
+
+	case 3:
+		readStreamlines(argc, argv, vf);
+		break;
+
+	default:
+		break;
+	}
+
+	performExtraction(vf, se);
+
+	Visualization vtkRender;
+	vtkRender.renderStreamlines(vf.streamlineVector, se.separationVector);
+
+	return 0;
+}
+
+void extractForPlyFile(const int& argc, char* argv[], VectorField& vf)
+{
 	vf.readVectorField(string(argv[1]));
-	// vf.printVectorFieldVTK();
+	vf.printVectorFieldVTK();
 
 	double integrationStep;
 	int maxLength, maxSeeding;
@@ -55,10 +97,20 @@ int main(int argc, char* argv[])
 
 	// print streamline vtk file for visualization
 	vf.printStreamlinesVTK();
+}
 
-	SeparationExtraction se;
+void readStreamlines(const int& argc, char* argv[], VectorField& vf)
+{
+	vf.readStreamlineFromFile(string(argv[1]));
+	// print streamline vtk file for visualization
+	vf.printStreamlinesVTK();
+}
 
-	std::cout << "Judge separation by, 1.expansion, 2.chi-test of discrete curvatures..." << std::endl;
+
+void performExtraction(VectorField& vf, SeparationExtraction& se)
+{
+	std::cout << "Judge separation by, 1.expansion, 2.chi-test of discrete curvatures, "
+				"3.chi-test of discrete curvatures of line segments..." << std::endl;
 	int measurementOption;
 	std::cin >> measurementOption;
 
@@ -66,15 +118,8 @@ int main(int argc, char* argv[])
 		se.extractSeparationLinesByExpansion(vf.streamlineVector);
 	else if(measurementOption==2)
 		se.extractSeparationLinesByChiTest(vf.streamlineVector);
+	else if(measurementOption==3)
+		se.extractSeparationLinesBySegments(vf.streamlineVector);
 
 	vf.writeSeparationToStreamlines(se.separationVector, string("Separation"));
-
-	Visualization vtkRender;
-
-	vtkRender.renderStreamlines(vf.streamlineVector, se.separationVector);
-
-	return 0;
 }
-
-
-
