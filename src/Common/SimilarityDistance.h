@@ -68,6 +68,12 @@ public:
 			std::vector<std::vector<int> >& segmentsToLines, int& accumulated,
 			const std::vector<Eigen::VectorXd>& streamlineVector);
 
+	/* MCP distance value estimation */
+	static const double getMcpDistance(const Eigen::VectorXd& first, const Eigen::VectorXd& second);
+
+	/* get Hausdorff distance between streamlines */
+	static const double getHausdorffDistance(const Eigen::VectorXd& first, const Eigen::VectorXd& second);
+
 	/* get chi-test-distance given two curvature array */
 	static const double getChiTestPair(const Eigen::VectorXd& first, const Eigen::VectorXd& second);
 

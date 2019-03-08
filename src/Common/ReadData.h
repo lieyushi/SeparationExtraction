@@ -61,6 +61,9 @@ public:
 	// read 3D streamlines from streamline data set
 	void readStreamlineFromFile(const string& fileName);
 
+	// print streamline data sets into clustering framework
+	void printStreamlineTXT();
+
 	// storage of vertex information (coordinates and velocity components)
 	std::vector<Vertex> vertexVec;
 

@@ -842,3 +842,29 @@ void VectorField::readStreamlineFromFile(const string& fileName)
 			  << vertexCount << " vertices!" << std::endl;
 }
 
+
+// print streamline data sets into clustering framework
+void VectorField::printStreamlineTXT()
+{
+	if(streamlineVector.empty())
+		return;
+
+	stringstream ss;
+	ss << dataset_name << "_streamline";
+	std::ofstream fout(ss.str().c_str(), ios::out);
+	if(!fout)
+	{
+		std::cout << "Error creating a new file!" << std::endl;
+		exit(1);
+	}
+
+	Eigen::VectorXd line;
+	for(int i=0; i<streamlineVector.size(); ++i)
+	{
+		line = streamlineVector[i];
+		for(int j=0; j<line.size(); ++j)
+			fout << line(j) << " ";
+		fout << std::endl;
+	}
+	fout.close();
+}

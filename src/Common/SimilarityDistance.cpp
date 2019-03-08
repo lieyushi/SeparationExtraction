@@ -535,3 +535,76 @@ const int SimilarityDistance::getStreamlineID(const int& segmentID,
 	return -1;
 }
 
+
+/* MCP distance value estimation */
+const double SimilarityDistance::getMcpDistance(const Eigen::VectorXd& first, const Eigen::VectorXd& second)
+{
+	const int& firstNum = first.size()/3;
+	const int& secondNum = second.size()/3;
+	double result, f_to_s, s_to_f;
+	double summation = 0;
+	for(int i=0;i<firstNum;++i)
+	{
+		double minDist = DBL_MAX;
+		Vector3d m_i = Vector3d(first(3*i),first(3*i+1),first(3*i+2));
+		for(int j=0;j<secondNum;++j)
+		{
+			Vector3d n_j = Vector3d(second(3*j),second(3*j+1),second(3*j+2));
+			minDist = std::min((m_i-n_j).norm(),minDist);
+		}
+		summation+=minDist;
+	}
+	s_to_f = summation/firstNum;
+
+	summation = 0;
+	for(int i=0;i<secondNum;++i)
+	{
+		double minDist = DBL_MAX;
+		Vector3d m_i = Vector3d(second(3*i),second(3*i+1),second(3*i+2));
+		for(int j=0;j<firstNum;++j)
+		{
+			Vector3d n_j = Vector3d(first(3*j),first(3*j+1),first(3*j+2));
+			minDist = std::min((m_i-n_j).norm(),minDist);
+		}
+		summation+=minDist;
+	}
+	f_to_s = summation/secondNum;
+
+	result = (f_to_s+s_to_f)/2.0;
+	return result;
+}
+
+
+/* get Hausdorff distance between streamlines */
+const double SimilarityDistance::getHausdorffDistance(const Eigen::VectorXd& first, const Eigen::VectorXd& second)
+{
+	const int& firstNum = first.size()/3;
+	const int& secondNum = second.size()/3;
+	double result, f_to_s = -DBL_MAX, s_to_f = -DBL_MAX;
+	for(int i=0;i<firstNum;++i)
+	{
+		double minDist = DBL_MAX;
+		Vector3d m_i = Vector3d(first(3*i),first(3*i+1),first(3*i+2));
+		for(int j=0;j<secondNum;++j)
+		{
+			Vector3d n_j = Vector3d(second(3*j),second(3*j+1),second(3*j+2));
+			minDist = std::min((m_i-n_j).norm(),minDist);
+		}
+		s_to_f=std::max(s_to_f, minDist);
+	}
+
+	for(int i=0;i<secondNum;++i)
+	{
+		double minDist = DBL_MAX;
+		Vector3d m_i = Vector3d(second(3*i),second(3*i+1),second(3*i+2));
+		for(int j=0;j<firstNum;++j)
+		{
+			Vector3d n_j = Vector3d(first(3*j),first(3*j+1),first(3*j+2));
+			minDist = std::min((m_i-n_j).norm(),minDist);
+		}
+		f_to_s=std::max(f_to_s, minDist);
+	}
+
+	result = std::max(f_to_s,s_to_f);
+	return result;
+}

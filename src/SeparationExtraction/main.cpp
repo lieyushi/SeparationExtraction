@@ -97,6 +97,8 @@ void extractForPlyFile(const int& argc, char* argv[], VectorField& vf)
 
 	// print streamline vtk file for visualization
 	vf.printStreamlinesVTK();
+
+	vf.printStreamlineTXT();
 }
 
 void readStreamlines(const int& argc, char* argv[], VectorField& vf)
