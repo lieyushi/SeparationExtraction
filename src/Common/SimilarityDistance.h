@@ -80,9 +80,17 @@ public:
 	/* get the streamline id given segment number */
 	static const int getStreamlineID(const int& segmentID, const std::vector<std::vector<int> >& segmentOfStreamlines);
 
+	/* get segment mapping, streamline->segment, segment->point, point->segment */
+	static void computeSegments(std::vector<std::vector<int> >& segmentToIndex,
+			std::vector<Eigen::VectorXd>& lineCurvatures, std::vector<std::vector<int> >& segmentsToLines,
+			int& accumulated, const std::vector<Eigen::VectorXd>& streamlineVector, std::vector<int>& pointToSegment);
+
+	/* get segment mapping, get segment coordinates as well */
+	static void computeSegments(std::vector<Eigen::VectorXd>& lineSegments,
+			std::vector<Eigen::VectorXd>& lineCurvatures, std::vector<std::vector<int> >& segmentsToLines,
+			int& accumulated, const std::vector<Eigen::VectorXd>& streamlineVector, std::vector<int>& pointToSegment);
+
 private:
-	/* a chi-test with two equal-size attribute arrays */
-	static const double getChiTest(const Eigen::VectorXd& first, const Eigen::VectorXd& second);
 
 	/* chi-test with two attribute arrays that have discrete curvatures over each vertex */
 	static const double getChiTestOfCurvaturesOnVertex(const Eigen::VectorXd& first, const Eigen::VectorXd& second,

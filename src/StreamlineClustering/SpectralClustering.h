@@ -27,13 +27,13 @@ void deleteVecElements(std::vector<T>& original, const T& first, const T& second
 
 void getMatrixPow(Eigen::DiagonalMatrix<double,Dynamic>& matrix, const double& powNumber);
 
+
 class SpectralClustering: public LineClustering
 {
 public:
 	// SpectralClustering();
 
-	SpectralClustering(std::vector<Eigen::VectorXd>& coordinates, Eigen::MatrixXd& distanceMatrix,
-				const string& name, const int& vertexCount);
+	SpectralClustering(Eigen::MatrixXd& distanceMatrix, const string& name, const int& vertexCount);
 
 	void performClustering();
 

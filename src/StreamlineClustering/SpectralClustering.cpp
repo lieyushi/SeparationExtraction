@@ -37,8 +37,8 @@ void getMatrixPow(Eigen::DiagonalMatrix<double,Dynamic>& matrix, const double& p
 }
 
 
-SpectralClustering::SpectralClustering(std::vector<Eigen::VectorXd>& coordinates, Eigen::MatrixXd& distanceMatrix,
-			const string& name, const int& vertexCount): LineClustering(coordinates, distanceMatrix, name, vertexCount)
+SpectralClustering::SpectralClustering(Eigen::MatrixXd& distanceMatrix, const string& name, const int& vertexCount):
+		LineClustering(distanceMatrix, name, vertexCount)
 {
 	setInputParameters();
 }
@@ -206,8 +206,11 @@ void SpectralClustering::getEigenClustering(const Eigen::MatrixXd& laplacianMatr
 	SelfAdjointEigenSolver<MatrixXd> eigensolver(laplacianMatrix);
 	std::cout << "Eigen decomposition ends!..." << std::endl;
 
+	// conventional spectral clustering applies this
 	const int& eigenRows = presetNumber;
-	//const int& eigenRows = 5;
+
+	// streamline embedding algorithm
+	//const int& eigenRows = 3;
 
 	Eigen::MatrixXd eigenVec(eigenRows, streamlineCount);
 
@@ -237,9 +240,6 @@ void SpectralClustering::getEigenClustering(const Eigen::MatrixXd& laplacianMatr
 		if(storage.empty())
 			return;
 	}
-
-	// print vtk for streamlines
-	printStreamlinesVTK();
 
 	reassignClusterAscending();
 }

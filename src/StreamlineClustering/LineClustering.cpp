@@ -12,9 +12,9 @@
 //
 //}
 
-LineClustering::LineClustering(std::vector<Eigen::VectorXd>& coordinates, Eigen::MatrixXd& distanceMatrix,
-		const string& name, const int& vertexCount): coordinates(coordinates), distanceMatrix(distanceMatrix),
-				datasetName(name), streamlineVertexCount(vertexCount), streamlineCount(coordinates.size())
+LineClustering::LineClustering(Eigen::MatrixXd& distanceMatrix, const string& name, const int& vertexCount):
+	distanceMatrix(distanceMatrix), datasetName(name),
+	streamlineVertexCount(vertexCount), streamlineCount(distanceMatrix.rows())
 {
 }
 
@@ -60,11 +60,12 @@ void LineClustering::reassignClusterAscending()
 
 
 // print vtk for streamlines
-void LineClustering::printStreamlinesVTK()
+void LineClustering::printStreamlinesVTK(const std::vector<Eigen::VectorXd>& coordinates)
 {
 	if(coordinates.empty())
 		return;
 
+	const int& streamlineCount = coordinates.size();
 	stringstream ss;
 	ss << datasetName << "_streamline.vtk";
 
@@ -132,7 +133,7 @@ void LineClustering::printStreamlinesVTK()
 
 
 // write different cluster labels into vtk file
-void LineClustering::writeLabelsIntoVTK(const string& labelName)
+void LineClustering::writeLabelsIntoVTK(const std::vector<Eigen::VectorXd>& coordinates, const string& labelName)
 {
 	if(coordinates.empty())
 		return;

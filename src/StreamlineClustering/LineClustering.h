@@ -47,8 +47,7 @@ class LineClustering {
 public:
 	//LineClustering();
 
-	LineClustering(std::vector<Eigen::VectorXd>& coordinates, Eigen::MatrixXd& distanceMatrix,
-			const string& name, const int& vertexCount);
+	LineClustering(Eigen::MatrixXd& distanceMatrix, const string& name, const int& vertexCount);
 
 	virtual ~LineClustering();
 
@@ -59,16 +58,16 @@ public:
 	void reassignClusterAscending();
 
 	// write different cluster labels into vtk file
-	void writeLabelsIntoVTK(const string& labelName);
+	void writeLabelsIntoVTK(const std::vector<Eigen::VectorXd>& coordinates, const string& labelName);
+
+	// print vtk for streamlines
+	void printStreamlinesVTK(const std::vector<Eigen::VectorXd>& coordinates);
 
 	/* cluster of each streamlines */
 	std::vector<int> groupID;
 
 	/* storage of each group */
 	std::vector<std::vector<int> > storage;
-
-	/* stream line vertex system */
-	std::vector<Eigen::VectorXd>& coordinates;
 
 	/* distance matrix */
 	Eigen::MatrixXd& distanceMatrix;
@@ -83,9 +82,6 @@ protected:
 
 	/* vertex total number */
 	int streamlineVertexCount = 0;
-
-	// print vtk for streamlines
-	void printStreamlinesVTK();
 
 private:
 

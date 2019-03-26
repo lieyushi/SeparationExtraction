@@ -23,7 +23,7 @@ void SeparationExtraction::extractSeparationLinesByExpansion(const std::vector<E
 	const int& streamlineSize = streamlineVector.size();
 	closestPair = std::vector<std::vector<std::pair<int,int> > >(streamlineSize,
 			std::vector<std::pair<int,int> >(streamlineSize, std::make_pair(-1,-1)));
-	distanceMatrix = Eigen::MatrixXd::Zero(streamlineSize, streamlineSize);
+	distanceMatrix = Eigen::MatrixXd::Zero(streamlineSize, streamlineSize);	// closest point distance
 	MCP_distance = Eigen::MatrixXd::Zero(streamlineSize, streamlineSize);
 
 #pragma omp parallel for schedule(static) num_threads(8)
@@ -238,7 +238,7 @@ bool SeparationExtraction::ExpansionByDistance(const Eigen::VectorXd& first_stre
 		}
 	}
 	ratio = double(forward_ratio+backward_ratio)/double(backward_length+forward_length);
-	if(forward_ratio>0 && backward_ratio>0 && ratio>=SeparationRatio)
+	if(/*forward_ratio>0 && backward_ratio>0 &&*/ ratio>=SeparationRatio)
 		return true;
 	else
 		return false;

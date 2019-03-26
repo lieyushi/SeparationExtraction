@@ -66,6 +66,7 @@ void getDistanceMatrix(const std::vector<Eigen::VectorXd>& streamlines, const in
 		Eigen::MatrixXd& distanceMatrix)
 {
 	const int& streamlineSize = streamlines.size();
+	std::cout << "There are " << streamlineSize << " streamlines!" << std::endl;
 	distanceMatrix = Eigen::MatrixXd::Zero(streamlineSize, streamlineSize);
 
 	switch(measureOption)
@@ -132,21 +133,26 @@ void getGroupFromClustering(VectorField& vf, Eigen::MatrixXd& distanceMatrix,
 	{
 	case 1:
 		{
-			AHC ahc(vf.streamlineVector, distanceMatrix, name, vf.vertexCount);
+			AHC ahc(distanceMatrix, name, vf.vertexCount);
 			ahc.performClustering();
 			if(ahc.groupID.empty())
 				return;
-			ahc.writeLabelsIntoVTK("AHC_"+measureName);
+
+			// print vtk for streamlines
+			ahc.printStreamlinesVTK(vf.streamlineVector);
+			ahc.writeLabelsIntoVTK(vf.streamlineVector, "AHC_"+measureName);
 		}
 		break;
 
 	case 2:
 		{
-			SpectralClustering sc(vf.streamlineVector, distanceMatrix, name, vf.vertexCount);
+			SpectralClustering sc(distanceMatrix, name, vf.vertexCount);
 			sc.performClustering();
 			if(sc.groupID.empty())
 				return;
-			sc.writeLabelsIntoVTK("SC_"+measureName);
+			// print vtk for streamlines
+			sc.printStreamlinesVTK(vf.streamlineVector);
+			sc.writeLabelsIntoVTK(vf.streamlineVector, "SC_"+measureName);
 		}
 		break;
 	}

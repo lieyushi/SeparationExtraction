@@ -97,7 +97,7 @@ private:
 	std::vector<std::vector<bool> > computationFlag;
 
 	// separation ratio
-	double SeparationRatio = 0.3;
+	double SeparationRatio = 0.05;
 
 	// search percentage of the total number
 	double SearchPercentage = 0.5;

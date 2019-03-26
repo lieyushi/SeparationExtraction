@@ -50,8 +50,7 @@ class AHC: public LineClustering
 public:
 	// AHC();
 
-	AHC(std::vector<Eigen::VectorXd>& coordinates, Eigen::MatrixXd& distanceMatrix,
-			const string& name, const int& vertexCount);
+	AHC(Eigen::MatrixXd& distanceMatrix, const string& name, const int& vertexCount);
 
 	void performClustering();
 

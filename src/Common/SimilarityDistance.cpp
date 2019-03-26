@@ -98,27 +98,6 @@ const double SimilarityDistance::getChiTestOfCurvatures(const Eigen::VectorXd& f
 }
 
 
-/* a chi-test with two equal-size attribute arrays */
-/*
- * Implementation can be seen https://github.com/lieyushi/FlowCurveClustering/blob/master/src/Common/Distance.cpp
- */
-const double SimilarityDistance::getChiTest(const Eigen::VectorXd& first, const Eigen::VectorXd& second)
-{
-	double chi_test = 0.0, difference, summation;
-	assert(first.size()==second.size());
-	for(int i=0; i<first.size(); ++i)
-	{
-		difference = double(first(i)-second(i));
-		difference = difference*difference;
-		summation = double(first(i)+second(i));
-		if(summation<1.0E-8)
-			continue;
-		chi_test += difference/summation;
-	}
-	return chi_test;
-}
-
-
 /* chi-test with two attribute arrays that have discrete curvatures over each vertex */
 const double SimilarityDistance::getChiTestOfCurvaturesOnVertex(const Eigen::VectorXd& first,
 		const Eigen::VectorXd& second, const int& firstHalf, const std::pair<int,int>& closest, const string& sign)
@@ -352,126 +331,104 @@ void SimilarityDistance::computeSegments(std::vector<Eigen::VectorXd>& lineSegme
 {
 	accumulated = 0;
 	const int& streamlineSize = streamlineVector.size();
+	for(int i=0; i<streamlineSize; ++i)
 	{
-		for(int i=0; i<streamlineSize; ++i)
+		// get streamline vector
+		const Eigen::VectorXd& streamline = streamlineVector.at(i);
+		const int& vertexCount = streamline.size()/3;
+		const int& segmentNumber = int(log2(vertexCount));
+
+		// should partition the streamline into segmentNumber segments
+		std::priority_queue<CurvatureObject, std::vector<CurvatureObject>, CompareFunc> firstQueue;
+		Eigen::VectorXd curvatureVec(vertexCount-2);
+		Eigen::Vector3d left, right, crossVec;
+
+		std::vector<int>& segmentList = segmentsToLines[i];
+		double dotValue, leftNorm, rightNorm, angle;
+
+		for(int j=0; j<vertexCount-2; ++j)
 		{
-			// get streamline vector
-			const Eigen::VectorXd& streamline = streamlineVector.at(i);
-			const int& vertexCount = streamline.size()/3;
-			const int& segmentNumber = int(log2(vertexCount));
+			/*
+			 * get the signed discrete curvatures for the first streamline segments
+			 */
+			left << streamline(3*j+3)-streamline(3*j),
+					streamline(3*j+4)-streamline(3*j+1),
+					streamline(3*j+5)-streamline(3*j+2);
+			right << streamline(3*j+6)-streamline(3*j+3),
+					streamline(3*j+7)-streamline(3*j+4),
+					streamline(3*j+8)-streamline(3*j+5);
 
-			// should partition the streamline into segmentNumber segments
-			std::priority_queue<CurvatureObject, std::vector<CurvatureObject>, CompareFunc> firstQueue;
-			Eigen::VectorXd curvatureVec(vertexCount-2);
-			Eigen::Vector3d left, right, crossVec;
-
-			std::vector<int>& segmentList = segmentsToLines[i];
-			double dotValue, leftNorm, rightNorm, angle;
-
-			for(int j=0; j<vertexCount-2; ++j)
+			// get the discrete curvatures
+			dotValue = left.dot(right);
+			leftNorm = left.norm();
+			rightNorm = right.norm();
+			if(leftNorm>=1.0E-8 && rightNorm>=1.0E-8)
 			{
-				/*
-				 * get the signed discrete curvatures for the first streamline segments
-				 */
-				left << streamline(3*j+3)-streamline(3*j),
-						streamline(3*j+4)-streamline(3*j+1),
-						streamline(3*j+5)-streamline(3*j+2);
-				right << streamline(3*j+6)-streamline(3*j+3),
-						streamline(3*j+7)-streamline(3*j+4),
-						streamline(3*j+8)-streamline(3*j+5);
-
-				// get the discrete curvatures
-				dotValue = left.dot(right);
-				leftNorm = left.norm();
-				rightNorm = right.norm();
-				if(leftNorm>=1.0E-8 && rightNorm>=1.0E-8)
-				{
-					dotValue = dotValue/leftNorm/rightNorm;
-					dotValue = std::min(1.0, dotValue);
-					dotValue = std::max(-1.0, dotValue);
-				}
-				angle = acos(dotValue);
-				// get its sign symbol, either + or -
-				crossVec = left.cross(right);
-				if(crossVec(2)<0)
-					angle = -angle;
-
-				firstQueue.push(CurvatureObject(angle, j));
-				if(firstQueue.size()>segmentNumber)
-					firstQueue.pop();
-
-				curvatureVec(j) = angle;
+				dotValue = dotValue/leftNorm/rightNorm;
+				dotValue = std::min(1.0, dotValue);
+				dotValue = std::max(-1.0, dotValue);
 			}
+			angle = acos(dotValue);
+			// get its sign symbol, either + or -
+			crossVec = left.cross(right);
+			if(crossVec(2)<0)
+				angle = -angle;
 
-			/* get the index list of both segments */
-			std::vector<int> firstIndex;
-			while(!firstQueue.empty())
-			{
-				firstIndex.push_back(firstQueue.top().index);
+			firstQueue.push(CurvatureObject(angle, j));
+			if(firstQueue.size()>segmentNumber)
 				firstQueue.pop();
-			}
 
-			std::sort(firstIndex.begin(), firstIndex.end());
-			segmentList = std::vector<int>(segmentNumber+1);
+			curvatureVec(j) = angle;
+		}
 
-			int l_index_0 = 0, r_index;
-			for(int j=0; j<segmentNumber+1; ++j)
+		/* get the index list of both segments */
+		std::vector<int> firstIndex;
+		while(!firstQueue.empty())
+		{
+			firstIndex.push_back(firstQueue.top().index);
+			firstQueue.pop();
+		}
+
+		std::sort(firstIndex.begin(), firstIndex.end());
+		segmentList = std::vector<int>(segmentNumber+1);
+
+		int l_index_0 = 0, r_index;
+		for(int j=0; j<segmentNumber+1; ++j)
+		{
+			Eigen::VectorXd& curvatureOfEachLine = lineCurvatures[accumulated+j];
+			Eigen::VectorXd& segmentCoordinate = lineSegments[accumulated+j];
+			if(j!=segmentNumber)
 			{
-				Eigen::VectorXd& curvatureOfEachLine = lineCurvatures[accumulated+j];
-				Eigen::VectorXd& segmentCoordinate = lineSegments[accumulated+j];
-				if(j!=segmentNumber)
+				r_index = firstIndex[j];
+
+				curvatureOfEachLine = Eigen::VectorXd(r_index-l_index_0+1);
+				/*
+				 * curvature index is 0,1,2. But vertex index is 0,1,2,3
+				 */
+				if(j==0)
 				{
-					r_index = firstIndex[j];
-
-					curvatureOfEachLine = Eigen::VectorXd(r_index-l_index_0+1);
-					/*
-					 * curvature index is 0,1,2. But vertex index is 0,1,2,3
-					 */
-					if(j==0)
+					segmentCoordinate = Eigen::VectorXd((r_index-l_index_0+2)*3);
+					// add first vertex to first segment
+					for(int k=0; k<3; ++k)
+						segmentCoordinate(k) = streamline(k);
+					// add vertices with index of segmentIndex+1 to segment
+					for(int k=l_index_0; k<=r_index; ++k)
 					{
-						segmentCoordinate = Eigen::VectorXd((r_index-l_index_0+2)*3);
-						// add first vertex to first segment
-						for(int k=0; k<3; ++k)
-							segmentCoordinate(k) = streamline(k);
-						// add vertices with index of segmentIndex+1 to segment
-						for(int k=l_index_0; k<=r_index; ++k)
+						// firstSum+=curvatureVec[k];
+						curvatureOfEachLine(k-l_index_0) = curvatureVec(k);
+						for(int l=0; l<3; ++l)
 						{
-							// firstSum+=curvatureVec[k];
-							curvatureOfEachLine(k-l_index_0) = curvatureVec(k);
-							for(int l=0; l<3; ++l)
-							{
-								segmentCoordinate(3*(k-l_index_0+1)+l) = streamline(3*(k+1)+l);
-							}
+							segmentCoordinate(3*(k-l_index_0+1)+l) = streamline(3*(k+1)+l);
 						}
 					}
-					/*
-					 * curvature index is 3,4,5, and vertex index is 4,5,6
-					 */
-					else
-					{
-						segmentCoordinate = Eigen::VectorXd((r_index-l_index_0+1)*3);
-						// add vertices with index of segmentIndex+1 to segment
-						for(int k=l_index_0; k<=r_index; ++k)
-						{
-							// firstSum+=curvatureVec[k];
-							curvatureOfEachLine(k-l_index_0) = curvatureVec(k);
-							for(int l=0; l<3; ++l)
-							{
-								segmentCoordinate(3*(k-l_index_0)+l) = streamline(3*(k+1)+l);
-							}
-						}
-					}
-					l_index_0 = r_index+1;
-
 				}
 				/*
-				 * curvature index is 9. But vertex index is 10, 11
+				 * curvature index is 3,4,5, and vertex index is 4,5,6
 				 */
 				else
 				{
-					r_index = curvatureVec.size()-1;
-					curvatureOfEachLine = Eigen::VectorXd(r_index-l_index_0+1);
-					segmentCoordinate = Eigen::VectorXd((r_index-l_index_0+2)*3);
+					segmentCoordinate = Eigen::VectorXd((r_index-l_index_0+1)*3);
+					// add vertices with index of segmentIndex+1 to segment
 					for(int k=l_index_0; k<=r_index; ++k)
 					{
 						// firstSum+=curvatureVec[k];
@@ -481,20 +438,40 @@ void SimilarityDistance::computeSegments(std::vector<Eigen::VectorXd>& lineSegme
 							segmentCoordinate(3*(k-l_index_0)+l) = streamline(3*(k+1)+l);
 						}
 					}
+				}
+				l_index_0 = r_index+1;
 
-					// add last index
-					for(int k=0; k<3; ++k)
+			}
+			/*
+			 * curvature index is 9. But vertex index is 10, 11
+			 */
+			else
+			{
+				r_index = curvatureVec.size()-1;
+				curvatureOfEachLine = Eigen::VectorXd(r_index-l_index_0+1);
+				segmentCoordinate = Eigen::VectorXd((r_index-l_index_0+2)*3);
+				for(int k=l_index_0; k<=r_index; ++k)
+				{
+					// firstSum+=curvatureVec[k];
+					curvatureOfEachLine(k-l_index_0) = curvatureVec(k);
+					for(int l=0; l<3; ++l)
 					{
-						segmentCoordinate(3*(r_index-l_index_0+1)+k) = streamline(3*(r_index+2)+k);
+						segmentCoordinate(3*(k-l_index_0)+l) = streamline(3*(k+1)+l);
 					}
-
-					l_index_0 = r_index+1;
 				}
 
-				segmentList[j] = accumulated+j;
+				// add last index
+				for(int k=0; k<3; ++k)
+				{
+					segmentCoordinate(3*(r_index-l_index_0+1)+k) = streamline(3*(r_index+2)+k);
+				}
+
+				l_index_0 = r_index+1;
 			}
-			accumulated += segmentNumber+1;
+
+			segmentList[j] = accumulated+j;
 		}
+		accumulated += segmentNumber+1;
 	}
 }
 
@@ -608,3 +585,311 @@ const double SimilarityDistance::getHausdorffDistance(const Eigen::VectorXd& fir
 	result = std::max(f_to_s,s_to_f);
 	return result;
 }
+
+
+/* get segment mapping, streamline->segment, segment->point, point->segment */
+void SimilarityDistance::computeSegments(std::vector<std::vector<int> >& segmentToIndex,
+		std::vector<Eigen::VectorXd>& lineCurvatures,
+		std::vector<std::vector<int> >& segmentsToLines, int& accumulated,
+		const std::vector<Eigen::VectorXd>& streamlineVector, std::vector<int>& pointToSegment)
+{
+	accumulated = 0;
+	int pointIndex = 0;
+	const int& streamlineSize = streamlineVector.size();
+	for(int i=0; i<streamlineSize; ++i)
+	{
+		// get streamline vector
+		const Eigen::VectorXd& streamline = streamlineVector.at(i);
+		const int& vertexCount = streamline.size()/3;
+		const int& segmentNumber = int(log2(vertexCount));
+
+		// should partition the streamline into segmentNumber segments
+		std::priority_queue<CurvatureObject, std::vector<CurvatureObject>, CompareFunc> firstQueue;
+		Eigen::VectorXd curvatureVec(vertexCount-2);
+		Eigen::Vector3d left, right, crossVec;
+
+		std::vector<int>& segmentList = segmentsToLines[i];
+		double dotValue, leftNorm, rightNorm, angle;
+
+		for(int j=0; j<vertexCount-2; ++j)
+		{
+			/*
+			 * get the signed discrete curvatures for the first streamline segments
+			 */
+			left << streamline(3*j+3)-streamline(3*j),
+					streamline(3*j+4)-streamline(3*j+1),
+					streamline(3*j+5)-streamline(3*j+2);
+			right << streamline(3*j+6)-streamline(3*j+3),
+					streamline(3*j+7)-streamline(3*j+4),
+					streamline(3*j+8)-streamline(3*j+5);
+
+			// get the discrete curvatures
+			dotValue = left.dot(right);
+			leftNorm = left.norm();
+			rightNorm = right.norm();
+			if(leftNorm>=1.0E-8 && rightNorm>=1.0E-8)
+			{
+				dotValue = dotValue/leftNorm/rightNorm;
+				dotValue = std::min(1.0, dotValue);
+				dotValue = std::max(-1.0, dotValue);
+			}
+			angle = acos(dotValue);
+			// get its sign symbol, either + or -
+			crossVec = left.cross(right);
+			if(crossVec(2)<0)
+				angle = -angle;
+
+			firstQueue.push(CurvatureObject(angle, j));
+			if(firstQueue.size()>segmentNumber)
+				firstQueue.pop();
+
+			curvatureVec(j) = angle;
+		}
+
+		/* get the index list of both segments */
+		std::vector<int> firstIndex;
+		while(!firstQueue.empty())
+		{
+			firstIndex.push_back(firstQueue.top().index);
+			firstQueue.pop();
+		}
+
+		std::sort(firstIndex.begin(), firstIndex.end());
+		segmentList = std::vector<int>(segmentNumber+1);
+
+		int l_index_0 = 0, r_index;
+		for(int j=0; j<segmentNumber+1; ++j)
+		{
+			Eigen::VectorXd& curvatureOfEachLine = lineCurvatures[accumulated+j];
+			std::vector<int>& segmentIndex = segmentToIndex[accumulated+j];
+			if(j!=segmentNumber)
+			{
+				r_index = firstIndex[j];
+
+				curvatureOfEachLine = Eigen::VectorXd(r_index-l_index_0+1);
+				/*
+				 * curvature index is 0,1,2. But vertex index is 0,1,2,3
+				 */
+				if(j==0)
+				{
+					segmentIndex.resize(r_index-l_index_0+2);
+					pointToSegment[pointIndex] = accumulated+j;
+					segmentIndex[0]=pointIndex;
+					// add vertices with index of segmentIndex+1 to segment
+					for(int k=l_index_0; k<=r_index; ++k)
+					{
+						// firstSum+=curvatureVec[k];
+						curvatureOfEachLine(k-l_index_0) = curvatureVec(k);
+						pointToSegment[pointIndex+k+1] = accumulated+j;
+						segmentIndex[k-l_index_0+1] = pointIndex+k+1;
+					}
+				}
+				/*
+				 * curvature index is 3,4,5, and vertex index is 4,5,6
+				 */
+				else
+				{
+					segmentIndex.resize(r_index-l_index_0+1);
+					// add vertices with index of segmentIndex+1 to segment
+					for(int k=l_index_0; k<=r_index; ++k)
+					{
+						// firstSum+=curvatureVec[k];
+						curvatureOfEachLine(k-l_index_0) = curvatureVec(k);
+						pointToSegment[pointIndex+k+1] = accumulated+j;
+						segmentIndex[k-l_index_0] = pointIndex+k+1;
+					}
+				}
+				l_index_0 = r_index+1;
+
+			}
+			/*
+			 * curvature index is 9. But vertex index is 10, 11
+			 */
+			else
+			{
+				segmentIndex.resize(r_index-l_index_0+2);
+				r_index = curvatureVec.size()-1;
+				curvatureOfEachLine = Eigen::VectorXd(r_index-l_index_0+1);
+				for(int k=l_index_0; k<=r_index; ++k)
+				{
+					// firstSum+=curvatureVec[k];
+					curvatureOfEachLine(k-l_index_0) = curvatureVec(k);
+					segmentIndex[k-l_index_0] = pointIndex+k+1;
+					pointToSegment[pointIndex+k+1] = accumulated+j;
+				}
+
+				// add last index
+				pointToSegment[pointIndex+r_index+2] = accumulated+j;
+				segmentIndex[r_index-l_index_0+1] = pointIndex+r_index+2;
+				l_index_0 = r_index+1;
+			}
+
+			segmentList[j] = accumulated+j;
+		}
+		accumulated += segmentNumber+1;
+		pointIndex += vertexCount;
+	}
+
+	std::cout << "Segmentation finished!" << std::endl;
+}
+
+
+/* get segment mapping, get segment coordinates as well */
+void SimilarityDistance::computeSegments(std::vector<Eigen::VectorXd>& lineSegments,
+		std::vector<Eigen::VectorXd>& lineCurvatures, std::vector<std::vector<int> >& segmentsToLines,
+		int& accumulated, const std::vector<Eigen::VectorXd>& streamlineVector, std::vector<int>& pointToSegment)
+{
+	accumulated = 0;
+	int pointIndex = 0;
+	const int& streamlineSize = streamlineVector.size();
+	for(int i=0; i<streamlineSize; ++i)
+	{
+		// get streamline vector
+		const Eigen::VectorXd& streamline = streamlineVector.at(i);
+		const int& vertexCount = streamline.size()/3;
+		const int& segmentNumber = int(log2(vertexCount));
+
+		// should partition the streamline into segmentNumber segments
+		std::priority_queue<CurvatureObject, std::vector<CurvatureObject>, CompareFunc> firstQueue;
+		Eigen::VectorXd curvatureVec(vertexCount-2);
+		Eigen::Vector3d left, right, crossVec;
+
+		std::vector<int>& segmentList = segmentsToLines[i];
+		double dotValue, leftNorm, rightNorm, angle;
+
+		for(int j=0; j<vertexCount-2; ++j)
+		{
+			/*
+			 * get the signed discrete curvatures for the first streamline segments
+			 */
+			left << streamline(3*j+3)-streamline(3*j),
+					streamline(3*j+4)-streamline(3*j+1),
+					streamline(3*j+5)-streamline(3*j+2);
+			right << streamline(3*j+6)-streamline(3*j+3),
+					streamline(3*j+7)-streamline(3*j+4),
+					streamline(3*j+8)-streamline(3*j+5);
+
+			// get the discrete curvatures
+			dotValue = left.dot(right);
+			leftNorm = left.norm();
+			rightNorm = right.norm();
+			if(leftNorm>=1.0E-8 && rightNorm>=1.0E-8)
+			{
+				dotValue = dotValue/leftNorm/rightNorm;
+				dotValue = std::min(1.0, dotValue);
+				dotValue = std::max(-1.0, dotValue);
+			}
+			angle = acos(dotValue);
+			// get its sign symbol, either + or -
+			crossVec = left.cross(right);
+			if(crossVec(2)<0)
+				angle = -angle;
+
+			firstQueue.push(CurvatureObject(angle, j));
+			if(firstQueue.size()>segmentNumber)
+				firstQueue.pop();
+
+			curvatureVec(j) = angle;
+		}
+
+		/* get the index list of both segments */
+		std::vector<int> firstIndex;
+		while(!firstQueue.empty())
+		{
+			firstIndex.push_back(firstQueue.top().index);
+			firstQueue.pop();
+		}
+
+		std::sort(firstIndex.begin(), firstIndex.end());
+		segmentList = std::vector<int>(segmentNumber+1);
+
+		int l_index_0 = 0, r_index;
+		for(int j=0; j<segmentNumber+1; ++j)
+		{
+			Eigen::VectorXd& curvatureOfEachLine = lineCurvatures[accumulated+j];
+			Eigen::VectorXd& segmentCoordinate = lineSegments[accumulated+j];
+			if(j!=segmentNumber)
+			{
+				r_index = firstIndex[j];
+
+				curvatureOfEachLine = Eigen::VectorXd(r_index-l_index_0+1);
+				/*
+				 * curvature index is 0,1,2. But vertex index is 0,1,2,3
+				 */
+				if(j==0)
+				{
+					segmentCoordinate = Eigen::VectorXd((r_index-l_index_0+2)*3);
+					// add first vertex to first segment
+					for(int k=0; k<3; ++k)
+						segmentCoordinate(k) = streamline(k);
+					pointToSegment[pointIndex] = accumulated+j;
+					// add vertices with index of segmentIndex+1 to segment
+					for(int k=l_index_0; k<=r_index; ++k)
+					{
+						// firstSum+=curvatureVec[k];
+						curvatureOfEachLine(k-l_index_0) = curvatureVec(k);
+						pointToSegment[pointIndex+k+1] = accumulated+j;
+						for(int l=0; l<3; ++l)
+						{
+							segmentCoordinate(3*(k-l_index_0+1)+l) = streamline(3*(k+1)+l);
+						}
+					}
+				}
+				/*
+				 * curvature index is 3,4,5, and vertex index is 4,5,6
+				 */
+				else
+				{
+					segmentCoordinate = Eigen::VectorXd((r_index-l_index_0+1)*3);
+					// add vertices with index of segmentIndex+1 to segment
+					for(int k=l_index_0; k<=r_index; ++k)
+					{
+						// firstSum+=curvatureVec[k];
+						curvatureOfEachLine(k-l_index_0) = curvatureVec(k);
+						pointToSegment[pointIndex+k+1] = accumulated+j;
+						for(int l=0; l<3; ++l)
+						{
+							segmentCoordinate(3*(k-l_index_0)+l) = streamline(3*(k+1)+l);
+						}
+					}
+				}
+				l_index_0 = r_index+1;
+
+			}
+			/*
+			 * curvature index is 9. But vertex index is 10, 11
+			 */
+			else
+			{
+				r_index = curvatureVec.size()-1;
+				curvatureOfEachLine = Eigen::VectorXd(r_index-l_index_0+1);
+				segmentCoordinate = Eigen::VectorXd((r_index-l_index_0+2)*3);
+				for(int k=l_index_0; k<=r_index; ++k)
+				{
+					// firstSum+=curvatureVec[k];
+					curvatureOfEachLine(k-l_index_0) = curvatureVec(k);
+					pointToSegment[pointIndex+k+1] = accumulated+j;
+					for(int l=0; l<3; ++l)
+					{
+						segmentCoordinate(3*(k-l_index_0)+l) = streamline(3*(k+1)+l);
+					}
+				}
+
+				// add last index
+				for(int k=0; k<3; ++k)
+				{
+					segmentCoordinate(3*(r_index-l_index_0+1)+k) = streamline(3*(r_index+2)+k);
+				}
+				pointToSegment[pointIndex+r_index+2] = accumulated+j;
+				l_index_0 = r_index+1;
+			}
+
+			segmentList[j] = accumulated+j;
+		}
+		accumulated += segmentNumber+1;
+		pointIndex += vertexCount;
+	}
+
+	std::cout << "Segmentation finished!" << std::endl;
+}
+

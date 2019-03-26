@@ -35,8 +35,8 @@ AHC::~AHC() {
 	// TODO Auto-generated destructor stub
 }
 
-AHC::AHC(std::vector<Eigen::VectorXd>& coordinates, Eigen::MatrixXd& distanceMatrix,
-		const string& name, const int& vertexCount): LineClustering(coordinates, distanceMatrix, name, vertexCount)
+AHC::AHC(Eigen::MatrixXd& distanceMatrix, const string& name, const int& vertexCount):
+		LineClustering(distanceMatrix, name, vertexCount)
 {
 	setInputParameters();
 }
@@ -61,9 +61,6 @@ void AHC::performClustering()
 		setLabel(nodeVec);
 
 		nodeVec.clear();
-
-		// print vtk for streamlines
-		printStreamlinesVTK();
 
 		reassignClusterAscending();
 	}
@@ -354,9 +351,9 @@ void AHC::setInputParameters()
 	if(!lMethod)
 	{
 		std::cout << "---------------------------" << std::endl;
-		std::cout << "Choose cluster number input between [1," << coordinates.size() << "]: " << std::endl;
+		std::cout << "Choose cluster number input between [1," << streamlineCount << "]: " << std::endl;
 		std::cin >> numberOfClusters;
-		assert(numberOfClusters>=1&&numberOfClusters<=coordinates.size());
+		assert(numberOfClusters>=1&&numberOfClusters<=streamlineCount);
 	}
 	else
 	{

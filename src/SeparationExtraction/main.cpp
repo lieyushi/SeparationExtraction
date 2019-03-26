@@ -89,7 +89,7 @@ void extractForPlyFile(const int& argc, char* argv[], VectorField& vf)
 	{
 		integrationStep = 0.004;
 		maxLength = 800;
-		maxSeeding = 400;
+		maxSeeding = 625;
 	}
 
 	// trace streamlines w.r.t. given parameters
