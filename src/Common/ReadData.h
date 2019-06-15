@@ -73,12 +73,25 @@ public:
 	// streamline holder
 	std::vector<Eigen::VectorXd> streamlineVector;
 
+	// coordinates limit
+	CoordinateLimits limits[3];
+
+	// original data set name
+	string dataset_name;
+
+	// rectilinear grid information
+	int X_RESOLUTION = -1, Y_RESOLUTION = -1, Z_RESOLUTION = -1;
+	double X_STEP = -1.0, Y_STEP = -1.0, Z_STEP = 1.0;
+
 private:
 	// read vector field from ply file
 	void readPlyFile(const string& fileName);
 
 	// read vector field from plain file
 	void readPlainFile(const string& fileName);
+
+	// read vector field from specific format
+	void readVectorFieldFromRaw(const string& fileName);
 
 	// use uniform sampling for streamline tracing
 	void uniformSeeding(std::vector<Vertex>& seeds, const int& maxSeeding);
@@ -103,16 +116,6 @@ private:
 
 	// whether stay away from existing point in the streamline far enough
 	bool isFarToStreamlines(const Eigen::Vector3d& nextPos, const int& id);
-
-	// coordinates limit
-	CoordinateLimits limits[3];
-
-	// original data set name
-	string dataset_name;
-
-	// rectilinear grid information
-	int X_RESOLUTION = -1, Y_RESOLUTION = -1, Z_RESOLUTION = -1;
-	double X_STEP = -1.0, Y_STEP = -1.0, Z_STEP = 1.0;
 
 	// spatial binning for checking whether current streamline points are close to existing points or not
 	std::vector<std::vector<StreamlinePoint> > spatialBins;

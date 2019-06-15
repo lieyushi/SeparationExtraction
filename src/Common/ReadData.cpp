@@ -18,15 +18,24 @@ VectorField::~VectorField()
 void VectorField::readVectorField(const string& fileName)
 {
 	const auto& pos = fileName.find(".ply");
-	if(fileName.find(".ply")!=std::string::npos)
+	if(pos!=std::string::npos)
 	{
 		readPlyFile(fileName);
 		dataset_name = fileName.substr(0, pos);
 	}
 	else
 	{
-		readPlainFile(fileName);
-		dataset_name = fileName;
+		const auto& txtPos = fileName.find(".txt");
+		if(txtPos!=std::string::npos)	// read vector field from txt file
+		{
+			readPlainFile(fileName);
+			dataset_name = fileName;
+		}
+		else
+		{
+			readVectorFieldFromRaw(fileName);
+			dataset_name = fileName;
+		}
 	}
 }
 
@@ -868,3 +877,19 @@ void VectorField::printStreamlineTXT()
 	}
 	fout.close();
 }
+
+// read vector field from specific format
+void VectorField::readVectorFieldFromRaw(const string& fileName)
+{
+	DataSet::read3DVectorField(fileName, vertexVec, limits, X_RESOLUTION, Y_RESOLUTION, Z_RESOLUTION);
+
+	if(X_RESOLUTION>1)
+		X_STEP = (limits[0].sup-limits[0].inf)/double(X_RESOLUTION);
+
+	if(Y_RESOLUTION>1)
+		Y_STEP = (limits[1].sup-limits[1].inf)/double(Y_RESOLUTION);
+
+	if(Z_RESOLUTION>1)
+		Z_STEP = (limits[2].sup-limits[2].inf)/double(Z_RESOLUTION);
+}
+

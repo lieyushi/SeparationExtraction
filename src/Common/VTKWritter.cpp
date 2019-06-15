@@ -243,3 +243,101 @@ void VTKWritter::printStreamlineScalarsOnSegments(const std::vector<Eigen::Vecto
 
 	std::cout << "vtk printed!" << std::endl;
 }
+
+
+/* print 3d vector field with regular grid */
+void VTKWritter::printVectorField(const string& fileName, const std::vector<Vertex>& vertexVec,
+		CoordinateLimits limits[3], const int& x_resolution, const int& y_resolution, const int& z_resolution,
+		const double& x_step, const double& y_step, const double& z_step)
+{
+
+	// create vtk file
+	stringstream ss;
+	ss << fileName << "_VectorField.vtk";
+	std::ofstream fout(ss.str().c_str(), ios::out);
+	if(fout.fail())
+	{
+		std::cout << "Error for creating vector field vtk file!" << std::endl;
+		exit(1);
+	}
+
+	// writing out the vector field vtk information
+    fout << "# vtk DataFile Version 3.0" << endl;
+    fout << "Volume example" << endl;
+    fout << "ASCII" << endl;
+    fout << "DATASET STRUCTURED_POINTS" << endl;
+    fout << "DIMENSIONS " << x_resolution << " " << y_resolution << " " << z_resolution << endl;
+    fout << "ASPECT_RATIO " << x_step << " " << y_step << " " << z_step << endl;
+    fout << "ORIGIN " << limits[0].inf << " " << limits[1].inf << " " << limits[2].inf << endl;
+    fout << "POINT_DATA " << x_resolution*y_resolution*z_resolution << endl;
+
+    const int& SLICE_NUMBER = x_resolution*y_resolution;
+
+	fout << "SCALARS velocity_magnitude double 1" << endl;
+	fout << "LOOKUP_TABLE velo_table" << endl;
+
+	for (int i = 0; i < z_resolution; ++i)
+	{
+		for (int j = 0; j < y_resolution; ++j)
+		{
+			for (int k = 0; k < x_resolution; ++k)
+			{
+				fout << vertexVec[SLICE_NUMBER*i+x_resolution*j+k].v_magnitude << endl;
+			}
+		}
+	}
+
+    fout << "VECTORS velocityDirection double" << endl;
+    Vertex vertex;
+    for (int i = 0; i < z_resolution; ++i)
+    {
+		for (int j = 0; j < y_resolution; ++j)
+		{
+			for (int k = 0; k < x_resolution; ++k)
+			{
+				vertex = vertexVec[SLICE_NUMBER*i+x_resolution*j+k];
+				fout << vertex.vx << " " << vertex.vy << " " << vertex.vz << endl;
+			}
+		}
+    }
+	fout.close();
+}
+
+
+/* print 3d point cloud */
+void VTKWritter::printPoints(const string& fileName, const std::vector<Eigen::Vector3d>& pointArray)
+{
+	// create vtk file
+	stringstream ss;
+	ss << fileName << "_pvsolution.vtk";
+	std::ofstream fout(ss.str().c_str(), ios::out);
+	if(fout.fail())
+	{
+		std::cout << "Error for creating vector field vtk file!" << std::endl;
+		exit(1);
+	}
+
+	const int& pointSize = pointArray.size();
+
+	// writing out the vector field vtk information
+    fout << "# vtk DataFile Version 3.0" << endl;
+    fout << "point example" << endl;
+    fout << "ASCII" << endl;
+    fout << "DATASET UNSTRUCTURED_GRID" << endl;
+    fout << "POINTS " << pointSize << " double" << std::endl;
+    for(int i=0; i<pointSize; ++i)
+    {
+    	fout << pointArray[i](0) << " " << pointArray[i](1) << " " << pointArray[i](2) << std::endl;
+    }
+    fout << "CELLS " << pointSize << " " << 2*pointSize << endl;
+	for (int i = 0; i < pointSize; i++)
+	{
+		fout << 1 << " " << i << endl;
+	}
+	fout << "CELL_TYPES " << pointSize << endl;
+	for (int i = 0; i < pointSize; i++)
+	{
+		fout << 1 << endl;
+	}
+    fout.close();
+}

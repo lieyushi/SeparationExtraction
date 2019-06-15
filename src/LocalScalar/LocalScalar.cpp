@@ -17,6 +17,8 @@ LocalScalar::LocalScalar(std::vector<Eigen::VectorXd>& coordinates, const string
 	/* vertex coordinates system */
 	vertexVec.resize(streamlineVertexCount);
 
+	std::cout << "There are " << streamlineVertexCount << " points and " <<
+			streamlineCount << " lines inside!" << std::endl;
 	/* build a vertex to streamline mapping */
 	vertexToLine.resize(streamlineVertexCount);
 
@@ -87,12 +89,34 @@ void LocalScalar::getUserInputParameter()
 	std::cin >> kNeighborNumber;
 	assert(kNeighborNumber>0 && kNeighborNumber<=int(streamlineCount*0.1));
 
-	/* encoding is enabled or not */
-	std::cout << "Choose whether scalar encoding is enabled or not? 1.Yes, 0.No," << std::endl;
-	int encodingOption;
-	std::cin >> encodingOption;
-	assert(encodingOption==1 || encodingOption==0);
-	encodingEnabled = (encodingOption==1);
+	/* option of point-distance expansion */
+	std::cout << "Choose point expansion option: 1.point distance ratio, 2.standard deviation: " << std::endl;
+	std::cin >> separationMeasureOption;
+	assert(separationMeasureOption==1 || separationMeasureOption==2);
+
+	if(separationMeasureOption==1)
+	{
+		/* whether use two of max value or not */
+		int encodingOption;
+		std::cout << "Choose whether to select max ratio of separation or not? 1.Yes, 0.No," << std::endl;
+		std::cin >> encodingOption;
+		useMaxRatio = (encodingOption==1);
+
+		/* log encoding is enabled or not */
+		std::cout << "Choose whether log encoding is enabled or not? 1.Yes, 0.No," << std::endl;
+		std::cin >> encodingOption;
+		assert(encodingOption==1 || encodingOption==0);
+		encodingEnabled = (encodingOption==1);
+	}
+
+	else if(separationMeasureOption==2)
+	{
+		std::cout << "Whether use normalized standard deviation or not? 1.Yes, 0.No." << std::endl;
+		int useDevNormalization;
+		std::cin >> useDevNormalization;
+		assert(useDevNormalization==1 || useDevNormalization==0);
+		useNormalizedDevi = (useNormalizedDevi==1);
+	}
 }
 
 
@@ -197,7 +221,7 @@ void LocalScalar::assignPointsToBins()
 		X_RESOLUTION = 51, Y_RESOLUTION = 51, Z_RESOLUTION = 1;
 		X_STEP = (range[0].sup-range[0].inf)/float(X_RESOLUTION-1);
 		Y_STEP = (range[1].sup-range[1].inf)/float(Y_RESOLUTION-1);
-		Z_STEP = 1.0;
+		Z_STEP = 1.0E5;
 	}
 	else
 	{
@@ -396,11 +420,21 @@ void LocalScalar::processAlignmentByPointWise()
 	// point-wise scalar value calculation on streamlines
 	std::vector<double> segmentScalars(streamlineVertexCount);
 
-	std::cout << "Whether search for left/right neighbors or not? 1.Yes, 2.No." << std::endl;
+	std::cout << "Choose neighborhood search strategy: 1.KNN, 2.left and right closest (2D only), "
+			"3.search along 8 directions on the plane (3D only), 4.search along directions of 9 voxels (3D only)."
+			<< std::endl;
 	int directionOption;
 	std::cin >> directionOption;
-	assert(directionOption==1 || directionOption==2);
-	bool directionEanbled = (directionOption==1);
+	assert(directionOption>=1 && directionOption<=4);
+	DirectionSearch direction = static_cast<DirectionSearch>(directionOption);
+
+	/* how many directions are used */
+	if(directionOption==3)
+	{
+		std::cout << "Choose how many directions want to select? 8 or 12." << std::endl;
+		std::cin >> directionNumbers;
+		assert(directionNumbers==8 || directionNumbers==12);
+	}
 
 	std::cout << "Whether candidates on same streamlines enabled? 1.Yes, 2.No." << std::endl;
 	int sameLineOption;
@@ -410,7 +444,11 @@ void LocalScalar::processAlignmentByPointWise()
 
 	const int& TOTALSIZE = 7;
 
-//#pragma omp parallel for schedule(static) num_threads(8)
+	struct timeval start, end;
+	double timeTemp;
+	gettimeofday(&start, NULL);
+
+#pragma omp parallel for schedule(static) num_threads(8)
 	for(int i=0; i<streamlineCount; ++i)
 	{
 		const std::vector<int>& vertexArray = streamlineToVertex[i];
@@ -419,12 +457,21 @@ void LocalScalar::processAlignmentByPointWise()
 		for(int j=0; j<arraySize; ++j)
 		{
 			std::vector<int> closestPoint;
-			getScalarsOnPointWise(directionEanbled, sameLineEnabled, j, vertexArray,
-					closestPoint);
+			getScalarsOnPointWise(direction, sameLineEnabled, j, vertexArray, closestPoint);
 
-			getScalarsFromNeighbors(j, vertexArray, TOTALSIZE, closestPoint, segmentScalars[vertexArray[j]]);
+			// check the separation w.r.t. ratio of distance
+			if(separationMeasureOption==1)
+				getScalarsFromNeighbors(j, vertexArray, TOTALSIZE, closestPoint, segmentScalars[vertexArray[j]]);
+
+			// check the separation w.r.t. standard deviation of point array
+			else if(separationMeasureOption==2)
+				getScalarsFromDeviation(j, vertexArray, TOTALSIZE, closestPoint, segmentScalars[vertexArray[j]]);
 		}
 	}
+
+	gettimeofday(&end, NULL);
+	timeTemp = ((end.tv_sec  - start.tv_sec) * 1000000u + end.tv_usec - start.tv_usec) / 1.e6;
+	std::cout << "The total computational time is " << timeTemp << " seconds!" << std::endl;
 
 	VTKWritter::printStreamlineScalarsOnSegments(coordinates,datasetName, streamlineVertexCount,
 				segmentScalars);
@@ -432,7 +479,7 @@ void LocalScalar::processAlignmentByPointWise()
 
 
 // compute the scalar value on point-wise element of the streamline
-void LocalScalar::getScalarsOnPointWise(const bool& directionEanbled, const bool& sameLineEnabled, const int& j,
+void LocalScalar::getScalarsOnPointWise(const DirectionSearch& directionOption, const bool& sameLineEnabled, const int& j,
 		const std::vector<int>& vertexArray, std::vector<int>& pointCandidate)
 {
 	int current;
@@ -440,14 +487,22 @@ void LocalScalar::getScalarsOnPointWise(const bool& directionEanbled, const bool
 
 	Eigen::Vector3d& targetVertex = vertexVec[targetID];
 
-	/* search left-closest and right-closest in 2D space */
-	if(directionEanbled)
+	switch(directionOption)
 	{
+	case 1: // left and right neighbors in 2D space
 		searchClosestThroughDirections(sameLineEnabled, j, vertexArray, pointCandidate);
-	}
-	else
-	{
+		break;
+
+	case 2: // find KNN neighboring points, e.g., k==8
 		searchKNNPointByBining(sameLineEnabled, j, vertexArray, pointCandidate);
+		break;
+
+	case 3: // find k neighboring points by direction-based search, e.g., k==8
+		searchNeighborThroughSeparateDirections(sameLineEnabled, j, vertexArray, pointCandidate);
+		break;
+
+	default:
+		exit(1);
 	}
 }
 
@@ -766,6 +821,10 @@ void LocalScalar::getScalarsFromNeighbors(const int& j, const std::vector<int>& 
 			end_dist = (vertexVec[firstEnd]-vertexVec[candidate+HALF]).norm();
 			start_dist = (vertexVec[firstBegin]-vertexVec[candidate-HALF]).norm();
 		}
+
+		if(start_dist<1.0E-8)
+			continue;
+
 		ratio = end_dist/start_dist;
 
 		if(isinf(ratio))
@@ -773,10 +832,18 @@ void LocalScalar::getScalarsFromNeighbors(const int& j, const std::vector<int>& 
 			std::cout << "Found inf! Program exit! " << end_dist << " " << start_dist << std::endl;
 			exit(1);
 		}
+
+		// use the max of divergence and convergence rate, so only consider 0 < ratio < 1
+		if(useMaxRatio)
+		{
+			if(ratio>0 && ratio<1)
+				ratio = 1.0/ratio;
+		}
 		summation+=ratio;
 		++effective;
 	}
 
+	/* can not find appropriate neighborhood lines */
 	if(effective==0)
 	{
 		scalar = 0;
@@ -789,9 +856,10 @@ void LocalScalar::getScalarsFromNeighbors(const int& j, const std::vector<int>& 
 	/* non-linear encoding is enabled to squeeze the scalar value inside [0,1.0] */
 	if(encodingEnabled)
 	{
+		/* summation is zero, what value should be assigned to? */
 		if(summation<1.0E-8)
 		{
-			scalar = 0.0;
+			scalar = 1.0;
 		}
 		else
 		{
@@ -804,4 +872,360 @@ void LocalScalar::getScalarsFromNeighbors(const int& j, const std::vector<int>& 
 	{
 		scalar = abs(summation-1.0);
 	}
+}
+
+
+// get scalar value based on difference deviation of point-wise distance
+void LocalScalar::getScalarsFromDeviation(const int& j, const std::vector<int>& vertexArray,
+		const int& TOTALSIZE, const std::vector<int>& closestPoint, double& scalar)
+{
+	std::vector<int> first(TOTALSIZE);
+	const int& arraySize = vertexArray.size();
+	if(arraySize<TOTALSIZE)
+	{
+		scalar = 0;
+		return;
+	}
+
+	const int& HALF = TOTALSIZE/2;
+	double summation = 0;
+	if(j<=HALF)
+	{
+		for(int k=0; k<TOTALSIZE; ++k)
+		{
+			first[k] = vertexArray[0]+k;
+		}
+	}
+	else if(j>=arraySize-HALF-1)
+	{
+		for(int k=0; k<TOTALSIZE; ++k)
+		{
+			first[k] = vertexArray[arraySize-TOTALSIZE+k];
+		}
+	}
+	else
+	{
+		for(int k=-HALF; k<=HALF; ++k)
+		{
+			first[k+HALF] = vertexArray[j+k];
+		}
+	}
+	int candidate, candSize;
+	std::vector<int> candStreamline;
+
+	const int& firstBegin = first[0];
+	const int& firstEnd = first.back();
+	double dist_mean, dist_deviation, min_dist, max_dist, point_dist;
+	int effective = 0;
+	for(int i=0; i<closestPoint.size(); ++i)
+	{
+		candidate = closestPoint[i];
+		candStreamline = streamlineToVertex[vertexToLine[candidate]];
+		candSize = candStreamline.size();
+		if(candSize<TOTALSIZE)
+			return;
+
+		dist_mean = dist_deviation = 0;
+		min_dist = DBL_MAX;
+		max_dist = -1.0;
+
+		if(candidate-candStreamline[0]<=HALF)
+		{
+			for(int k=0; k<TOTALSIZE; ++k)
+			{
+				point_dist = (vertexVec[firstBegin+k]-vertexVec[candStreamline[0]+k]).norm();
+				dist_mean += point_dist;
+				dist_deviation += point_dist*point_dist;
+				min_dist = std::min(min_dist, point_dist);
+				max_dist = std::max(max_dist, point_dist);
+			}
+		}
+		else if(candStreamline.back()-candidate<=HALF)
+		{
+			for(int k=0; k<TOTALSIZE; ++k)
+			{
+				point_dist = (vertexVec[firstBegin+k]-vertexVec[candStreamline.back()-TOTALSIZE+k+1]).norm();
+				dist_mean += point_dist;
+				dist_deviation += point_dist*point_dist;
+				min_dist = std::min(min_dist, point_dist);
+				max_dist = std::max(max_dist, point_dist);
+			}
+		}
+		else
+		{
+			for(int k=0; k<TOTALSIZE; ++k)
+			{
+				point_dist = (vertexVec[firstBegin+k]-vertexVec[candidate-HALF+k]).norm();
+				dist_mean += point_dist;
+				dist_deviation += point_dist*point_dist;
+				min_dist = std::min(min_dist, point_dist);
+				max_dist = std::max(max_dist, point_dist);
+			}
+		}
+
+		dist_deviation = (dist_deviation - dist_mean*dist_mean/double(TOTALSIZE))/double(TOTALSIZE-1);
+
+		if(dist_deviation<0)
+		{
+			continue;
+		}
+
+		dist_deviation = sqrt(dist_deviation);
+
+		/* whether use normalization */
+		if(useNormalizedDevi)
+			dist_deviation/=max_dist-min_dist;
+
+		summation+=dist_deviation;
+		++effective;
+	}
+
+	/* can not find appropriate neighborhood lines */
+	if(effective==0)
+	{
+		scalar = 0;
+
+		return;
+	}
+
+	summation/=effective;
+
+	scalar = summation;
+}
+
+
+// search through eight perpendicular directions and each find the streamline passing through the point
+void LocalScalar::searchNeighborThroughSeparateDirections(const bool& sameLineEnabled, const int& j,
+		const std::vector<int>& vertexArray, std::vector<int>& pointCandidate)
+{
+	// compute the threshold to tell whether points are close to search directions or not
+	if(Z_STEP>1.0E4)
+	{
+		searchThreshold = sqrt(X_STEP*X_STEP+Y_STEP*Y_STEP);
+	}
+	else
+	{
+		searchThreshold = sqrt(X_STEP*X_STEP+Y_STEP*Y_STEP+Z_STEP*Z_STEP);
+	}
+	// search step size
+	double searchingStep = searchThreshold*0.05;
+
+	// closest threshold
+	searchThreshold*=0.08;
+
+	// find the perpendicular plane w.r.t. the tangent direction
+	int targetID = vertexArray[j];
+	int centerX = (vertexVec[targetID](0)-range[0].inf)/X_STEP;
+	int centerY = (vertexVec[targetID](1)-range[1].inf)/Y_STEP;
+	int centerZ = (vertexVec[targetID](2)-range[2].inf)/Z_STEP;
+	const int& xy_multiplication = X_RESOLUTION*Y_RESOLUTION;
+
+	Eigen::Vector3d& center = vertexVec[targetID];
+	// find basis segment vector along the flow direction
+	Eigen::Vector3d tangential;
+	if(j==0)
+		tangential = vertexVec[j+1]-vertexVec[j];
+	else if(j==vertexArray.size()-1)
+		tangential = vertexVec[j]-vertexVec[j-1];
+	else
+		tangential = vertexVec[j+1]-vertexVec[j-1];
+	/* Already known z == 0, so we can definitely know the left and right direction vectors
+	 * Assume tangential is (a,b,0), left is (-b,a,0), right is (b,-a,0).
+	 */
+	tangential/=tangential.norm();
+
+	// find eight direction vectors separated by 45 degrees each other
+	std::vector<Eigen::Vector3d> directionVectors;
+	findDirectionVectors(tangential, center, directionVectors);
+
+	Eigen::Vector3d current;
+	int currentBin, streamID;
+
+	std::unordered_map<int,int> streamlineChosen;
+
+	for(int i=0; i<directionVectors.size(); ++i)
+	{
+		current = center;
+		std::vector<MinimalDist> pointIDArray;
+		while(1)
+		{
+			current += 2.0*searchingStep*directionVectors[i];
+
+			int x = (current(0)-range[0].inf)/X_STEP;
+			int y = (current(1)-range[1].inf)/Y_STEP;
+			int z = (current(2)-range[2].inf)/Z_STEP;
+
+			// exit the search boundary, terminate the loop
+			if(x<0 || x>=X_RESOLUTION || y<0 || y>=Y_RESOLUTION || z<0 || z>=Z_RESOLUTION)
+				break;
+
+			currentBin = xy_multiplication*z+X_RESOLUTION*y+x;
+
+			pointIDArray.clear();
+
+			std::vector<streamPoint>& bins = spatialBins[currentBin];
+			for(int k=0; k<bins.size(); ++k)
+			{
+				streamID = bins[k].vertexID;
+				if(streamID==targetID)	// same vertex
+					continue;
+				if(vertexToLine[streamID]==vertexToLine[targetID])	// on same streamlines
+					continue;
+				pointIDArray.push_back(MinimalDist((current-vertexVec[streamID]).norm(), streamID));
+			}
+			// sort distance from minimal to maximal
+			std::sort(pointIDArray.begin(), pointIDArray.end(), CompareDistRecord());
+			if(!pointIDArray.empty())	// not empty
+			{
+				streamID = pointIDArray[0].index;
+				if(pointIDArray[0].dist<=searchThreshold) // smallest is within range, accept it!
+				{
+					if(streamlineChosen.count(vertexToLine[streamID])==0) // its streamline is not included yet
+					{
+						pointCandidate.push_back(streamID); // add it
+						++streamlineChosen[vertexToLine[streamID]]; // update the hash map
+						break;	// this direction search is done
+					}
+				}
+			}
+		}
+	}
+}
+
+
+// search through all nine voxels. If one voxel has empty, will search into other voxel along that direction
+void LocalScalar::searchNeighborThroughVoxels(const bool& sameLineEnabled, const int& j,
+		const std::vector<int>& vertexArray, std::vector<int>& pointCandidate)
+{
+
+}
+
+
+// given a planar, get eight normalized directions separated by 45 degrees
+void LocalScalar::findDirectionVectors(const Eigen::Vector3d& tangential, const Eigen::Vector3d& center,
+		std::vector<Eigen::Vector3d>& directionVectors)
+{
+	// given any initial directions
+	Eigen::Vector3d temp(1.0, 1.0, 1.0);
+	temp(2) = -(tangential(0)+tangential(1));
+
+	// normalize the direction
+	temp/=temp.norm();
+	directionVectors.push_back(temp);
+	// negative direction is also accepted
+	directionVectors.push_back(-temp);
+
+	// double angles[] = {M_PI/6.0, M_PI/3.0, M_PI/2.0, M_PI/3.0*2.0, M_PI/6.0*5.0};
+
+	std::vector<double> angles;
+
+	const int& intervalNumber = (directionNumbers-2)/2+1;
+	const double& interval = M_PI/intervalNumber;
+
+	for(int i=1; i<intervalNumber; ++i)
+	{
+		angles.push_back(interval*i);
+	}
+
+	for(int i=0; i<angles.size(); ++i)
+	{
+		findDirectionsToAngles(tangential, directionVectors[0], angles[i], directionVectors);
+	}
+}
+
+
+// use quadratic system to get the two directions w.r.t. reference
+void LocalScalar::findDirectionsToAngles(const Eigen::Vector3d& tangential, const Eigen::Vector3d& reference,
+		const double& angle, std::vector<Eigen::Vector3d>& directionVectors)
+{
+	// I use matlab to directly get the numerical solutions
+	/*
+	 * tangential = (a, b, c), reference = (d, e, f), angle = pi/4.0
+	 * should solve the nonlinear euqations
+	 * ax + by + cz == 0
+	 * dx + ey + fz - cos(angle) == 0
+	 * xx + yy + zz -1 == 0
+	 */
+
+	double a = tangential(0), b = tangential(1), c = tangential(2);
+	double d = reference(0), e = reference(1), f = reference(2);
+	const double& cosVal = cos(angle);
+
+	Eigen::Vector3d solution;
+
+	// get first direction
+	solution(2) = (a*e*sqrt(- a*a*cosVal*cosVal + a*a*e*e + a*a*f*f - 2*a*b*d*e - 2*a*c*d*f - b*b*cosVal*cosVal
+			+ b*b*d*d + b*b*f*f - 2*b*c*e*f - c*c*cosVal*cosVal + c*c*d*d + c*c*e*e)
+			- b*d*sqrt(- a*a*cosVal*cosVal + a*a*e*e + a*a*f*f - 2*a*b*d*e - 2*a*c*d*f - b*b*cosVal*cosVal
+		    + b*b*d*d + b*b*f*f - 2*b*c*e*f - c*c*cosVal*cosVal + c*c*d*d + c*c*e*e) + a*a*cosVal*f
+			+ b*b*cosVal*f - a*c*cosVal*d - b*c*cosVal*e)/(a*a*cosVal*cosVal - a*a*e*e + 2*a*b*d*e
+			+ b*b*cosVal*cosVal - b*b*d*d);
+
+	if(a*e-b*d==0)
+	{
+		std::cout << "Error for denominator being zero!" << std::endl;
+		exit(1);
+	}
+	solution(0) = -(b*cosVal - b*f*solution(2) + c*e*solution(2))/(a*e - b*d);
+	solution(1) = (a*cosVal - a*f*solution(2) + c*d*solution(2))/(a*e - b*d);
+	directionVectors.push_back(solution);
+	// make sure the solution we get is 100% correct
+	assert(abs(solution.dot(reference)-cosVal)<1.0E-6);
+	assert(abs(solution.dot(tangential))<1.0E-6);
+	assert(abs(solution.norm()-1.0)<1.0E-6);
+
+	// get second direction
+	solution(2) =  -(a*e*sqrt(- a*a*cosVal*cosVal + a*a*e*e + a*a*f*f - 2*a*b*d*e - 2*a*c*d*f - b*b*cosVal*cosVal
+			+ b*b*d*d + b*b*f*f - 2*b*c*e*f - c*c*cosVal*cosVal + c*c*d*d + c*c*e*e)
+			- b*d*sqrt(- a*a*cosVal*cosVal + a*a*e*e + a*a*f*f - 2*a*b*d*e - 2*a*c*d*f - b*b*cosVal*cosVal
+			+ b*b*d*d + b*b*f*f - 2*b*c*e*f - c*c*cosVal*cosVal + c*c*d*d + c*c*e*e)
+			- a*a*cosVal*f - b*b*cosVal*f + a*c*cosVal*d + b*c*cosVal*e)/(a*a*cosVal*cosVal
+			- a*a*e*e + 2*a*b*d*e + b*b*cosVal*cosVal - b*b*d*d);
+	solution(0) = -(b*cosVal - b*f*solution(2) + c*e*solution(2))/(a*e - b*d);
+	solution(1) = (a*cosVal - a*f*solution(2) + c*d*solution(2))/(a*e - b*d);
+	directionVectors.push_back(solution);
+
+	// make sure the solution we get is 100% correct
+	assert(abs(solution.dot(reference)-cosVal)<1.0E-6);
+	assert(abs(solution.dot(tangential))<1.0E-6);
+	assert(abs(solution.norm()-1.0)<1.0E-6);
+}
+
+
+// perform Newton iteration to solve non-linear equation
+void findSolutionByNewtonIteration(const Eigen::Vector3d& normal, const Eigen::Vector3d& reference,
+		const double& angle, Eigen::Vector3d& solution)
+{
+	Eigen::Vector3d startingValue = reference;
+	const double& cosVal = cos(angle);
+
+	int iter = 0;
+	double error = DBL_MAX;
+
+	Eigen::MatrixXd Jacobian(3,3);
+	Eigen::Vector3d f_value;
+
+	for(int i=0; i<3; ++i)
+	{
+		Jacobian(0,i) = normal(i);
+		Jacobian(1,i) = reference(i);
+	}
+
+	while(iter<NewtonIteration && error>ErrorThreshold)
+	{
+		for(int i=0; i<3; ++i)
+			Jacobian(2,i) = 2.0*startingValue(i);
+
+		f_value(0) = normal.dot(startingValue);
+		f_value(1) = reference.dot(startingValue)-cosVal;
+		f_value(2) = startingValue.dot(startingValue)-1.0;
+
+		solution = startingValue-Relaxation*Jacobian.inverse()*f_value;
+
+		++iter;
+		error = (solution-startingValue).norm();
+		startingValue = solution;
+	}
+
+	// get the solution point to satisfy the nonlinear equation arrays
 }

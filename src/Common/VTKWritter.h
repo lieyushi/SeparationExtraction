@@ -22,6 +22,7 @@
 #include <eigen3/Eigen/Dense>
 #include <eigen3/Eigen/Core>
 #include <eigen3/Eigen/SVD>
+#include "DataSet.h"
 
 using namespace std;
 using namespace Eigen;
@@ -40,6 +41,14 @@ public:
 	/* print streamlines with scalars on segments */
 	static void printStreamlineScalarsOnSegments(const std::vector<Eigen::VectorXd>& coordinates,
 			const string& datasetName, const int& streamlineVertexCount, const std::vector<double>& segmentScalars);
+
+	/* print 3d vector field with regular grid */
+	static void printVectorField(const string& fileName, const std::vector<Vertex>& vertexVec,
+			CoordinateLimits limits[3], const int& x_resolution, const int& y_resolution, const int& z_resolution,
+			const double& x_step, const double& y_step, const double& z_step);
+
+	/* print 3d point cloud */
+	static void printPoints(const string& fileName, const std::vector<Eigen::Vector3d>& pointArray);
 
 };
 

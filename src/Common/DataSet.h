@@ -89,7 +89,48 @@ public:
 	 * read 3D vector field from some given customized 3D data sets
 	 */
 	static void read3DVectorField(const string& fileName, std::vector<Vertex>& vertexVec,
-			CoordinateLimits limits[3]);
+			CoordinateLimits limits[3], int& x_resolution, int& y_resolution, int& z_resolution);
+
+private:
+	/*
+	 * read Bernard.raw data into vertexVec
+	 */
+	static void readBernardRaw(const string& fileName, std::vector<Vertex>& vertexVec,
+			CoordinateLimits limits[3], int& x_resolution, int& y_resolution, int& z_resolution);
+
+	/*
+	 * generate tornado 3d vector field
+	 */
+	static void generateTornado(const string& fileName, std::vector<Vertex>& vertexVec,
+			CoordinateLimits limits[3], int& x_resolution, int& y_resolution, int& z_resolution);
+
+	/*
+	 * read plume.vec, two_swirl.vec or crafish.vec for plume and two_swirl
+	 */
+	static void readVecData(const string& fileName, std::vector<Vertex>& vertexVec,
+			CoordinateLimits limits[3], int& x_resolution, int& y_resolution, int& z_resolution);
+
+	/*
+	 * read cylinder flow
+	 */
+	static void readCylinderRaw(const string& fileName, std::vector<Vertex>& vertexVec,
+			CoordinateLimits limits[3], int& x_resolution, int& y_resolution, int& z_resolution);
+
+	/*
+	 * read Hurricane flow from a given file
+	 */
+	static void readHurricaneFlow(const string& fileName, std::vector<Vertex>& vertexVec,
+			CoordinateLimits limits[3], int& x_resolution, int& y_resolution, int& z_resolution);
+
+
 };
+
+
+/**
+ * Find a substring in a string
+ * @return a pointer to the first occurrence of searchString in the inputString
+*/
+const char* locateSubString(const char* inputString, const char* searchString);
+
 
 #endif /* SRC_COMMON_DATASET_H_ */

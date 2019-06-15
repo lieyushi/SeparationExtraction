@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <queue>
 #include <cassert>
+#include <sys/time.h>
 #include <eigen3/Eigen/Dense>
 #include <eigen3/Eigen/Core>
 #include <eigen3/Eigen/SVD>
@@ -28,6 +29,11 @@
 
 using namespace std;
 using namespace Eigen;
+
+// parameter set-up for Newton Iteration
+#define Relaxation 0.8
+#define NewtonIteration 200
+#define ErrorThreshold 1.0E-4
 
 // a struct to showcase a point on the streamline with a given id
 struct streamPoint
@@ -46,6 +52,13 @@ struct coordinateLimit
 	{}
 };
 
+enum DirectionSearch
+{
+	KNN = 1,
+	LeftAndRight,
+	EightDirections,
+	NineVoxelDirection
+};
 
 struct MinimalDist
 {
@@ -68,7 +81,6 @@ struct CompareDistRecord
 		return d1.dist<d2.dist;
 	}
 };
-
 
 
 class LocalScalar {
@@ -107,6 +119,18 @@ private:
 	/* encoding is enabled or not */
 	bool encodingEnabled;
 
+	/* neighbor difference measurement method: 1. point distance ratio, 2. standard deviation */
+	int separationMeasureOption;
+
+	/* whether the deviation is normalized or not */
+	bool useNormalizedDevi;
+
+	/* to judge whether search direction is close to some point or not */
+	double searchThreshold;
+
+	/* whether use two of max value or not */
+	bool useMaxRatio;
+
 	/* vertex coordinates system */
 	std::vector<Eigen::Vector3d> vertexVec;
 
@@ -115,6 +139,9 @@ private:
 
 	/* streamline to vertex mapping */
 	std::vector<std::vector<int> > streamlineToVertex;
+
+	/* how many directions are used */
+	int directionNumbers;
 
 	/* get user-input option */
 	void getUserInputParameter();
@@ -165,7 +192,7 @@ private:
 	void processAlignmentByPointWise();
 
 	// compute the scalar value on point-wise element of the streamline
-	void getScalarsOnPointWise(const bool& directionEanbled, const bool& sameLineEnabled, const int& j,
+	void getScalarsOnPointWise(const DirectionSearch& directionOption, const bool& sameLineEnabled, const int& j,
 			const std::vector<int>& vertexArray, std::vector<int>& pointCandidate);
 
 	// find KNN closest point in the spatial bining
@@ -176,9 +203,40 @@ private:
 	void searchClosestThroughDirections(const bool& sameLineEnabled, const int& j,
 			const std::vector<int>& vertexArray, std::vector<int>& pointCandidate);
 
+	// search through eight perpendicular directions and each find the streamline passing through the point
+	void searchNeighborThroughSeparateDirections(const bool& sameLineEnabled, const int& j,
+			const std::vector<int>& vertexArray, std::vector<int>& pointCandidate);
+
+	// search through all nine voxels. If one voxel has em	// double angles[] = {M_PI/6.0, M_PI/3.0, M_PI/2.0, M_PI/3.0*2.0, M_PI/6.0*5.0};
+
+	// double angles[] = {M_PI/6.0, M_PI/3.0, M_PI/2.0, M_PI/3.0*2.0, M_PI/6.0*5.0};pty, will search into other voxel along that direction
+	void searchNeighborThroughVoxels(const bool& sameLineEnabled, const int& j,
+			const std::vector<int>& vertexArray, std::vector<int>& pointCandidate);
+
 	// get scalar value based on neighborhood
 	void getScalarsFromNeighbors(const int& j, const std::vector<int>& vertexArray,
 			const int& TOTALSIZE, const std::vector<int>& closestPoint, double& scalar);
+
+	// get scalar value based on difference deviation of point-wise distance
+	void getScalarsFromDeviation(const int& j, const std::vector<int>& vertexArray,
+			const int& TOTALSIZE, const std::vector<int>& closestPoint, double& scalar);
+
+	/*
+	 * Some functions to be placed here to get necessary information
+	 */
+
+	// given a planar, get eight normalized directions separated by 45 degrees
+	void findDirectionVectors(const Eigen::Vector3d& tangential, const Eigen::Vector3d& center,
+			std::vector<Eigen::Vector3d>& directionVectors);
+
+	// use quadratic system to get the two directions w.r.t. reference
+	void findDirectionsToAngles(const Eigen::Vector3d& tangential, const Eigen::Vector3d& reference,
+			const double& angle, std::vector<Eigen::Vector3d>& directionVectors);
+
 };
+
+// perform Newton iteration to solve non-linear equation
+void findSolutionByNewtonIteration(const Eigen::Vector3d& normal, const Eigen::Vector3d& reference,
+		const double& angle, Eigen::Vector3d& solution);
 
 #endif /* SRC_LOCALSCALAR_LOCALSCALAR_H_ */

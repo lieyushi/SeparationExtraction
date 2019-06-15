@@ -60,3 +60,45 @@ else()
 	target_link_libraries(separationExtraction vtkHybrid vtkWidgets ${ALL_LIBS})
 endif()
 ###############################################
+
+###############################################
+# generate separationExtraction executable
+set( 
+	CLUSTERING_SRC
+   )
+file( GLOB CLUSTERING_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/StreamlineClustering/*.cpp)  
+add_executable(streamlineClustering ${CLUSTERING_SRC})
+if(VTK_LIBRARIES)
+	target_link_libraries(streamlineClustering ${VTK_LIBRARIES} ${ALL_LIBS})
+else()
+	target_link_libraries(streamlineClustering vtkHybrid vtkWidgets ${ALL_LIBS})
+endif()
+###############################################
+
+###############################################
+# generate localScalar executable
+set( 
+	LOCAL_SCALAR_SRC
+   )
+file( GLOB LOCAL_SCALAR_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/LocalScalar/*.cpp)  
+add_executable(localScalar ${LOCAL_SCALAR_SRC})
+if(VTK_LIBRARIES)
+	target_link_libraries(localScalar ${VTK_LIBRARIES} ${ALL_LIBS})
+else()
+	target_link_libraries(localScalar vtkHybrid vtkWidgets ${ALL_LIBS})
+endif()
+###############################################
+
+###############################################
+# generate localScalar executable
+set( 
+	LOCAL_SCALAR_SRC
+   )
+file( GLOB LOCAL_SCALAR_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/ParallelVector/*.cpp)  
+add_executable(pvOperator ${LOCAL_SCALAR_SRC})
+if(VTK_LIBRARIES)
+	target_link_libraries(pvOperator ${VTK_LIBRARIES} ${ALL_LIBS})
+else()
+	target_link_libraries(pvOperator vtkHybrid vtkWidgets ${ALL_LIBS})
+endif()
+###############################################
