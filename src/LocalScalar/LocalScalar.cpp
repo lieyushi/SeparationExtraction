@@ -99,6 +99,7 @@ void LocalScalar::getUserInputParameter()
 		/* whether use two of max value or not */
 		int encodingOption;
 		std::cout << "Choose whether to select max ratio of separation or not? 1.Yes, 0.No," << std::endl;
+		assert(encodingOption==1 || encodingOption==0);
 		std::cin >> encodingOption;
 		useMaxRatio = (encodingOption==1);
 
