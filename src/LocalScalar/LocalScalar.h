@@ -146,6 +146,9 @@ private:
 	/* get user-input option */
 	void getUserInputParameter();
 
+	/* record time spent in the readme in case they are required again */
+	void recordTime(const double& timeSpent);
+
 	/* -----------------------------------------------------------------------------------------------------------
 	 * ---------------------------------Segments based on signature sampling--------------------------------------
 	 * -----------------------------------------------------------------------------------------------------------

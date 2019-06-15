@@ -476,6 +476,36 @@ void LocalScalar::processAlignmentByPointWise()
 
 	VTKWritter::printStreamlineScalarsOnSegments(coordinates,datasetName, streamlineVertexCount,
 				segmentScalars);
+
+	recordTime(timeTemp);
+
+}
+
+
+/* record time spent in the readme in case they are required again */
+void LocalScalar::recordTime(const double& timeSpent)
+{
+	// find the last '/' in the data set name
+	int lastSlash = -1;
+	for(int i=datasetName.size()-1; i>=0; --i)
+	{
+		if(datasetName[i]=='/')
+		{
+			lastSlash = i;
+			break;
+		}
+	}
+	string _data_set = datasetName.substr(lastSlash+1);
+
+	// record them into the readme
+	std::ofstream readme(datasetName.substr(0,lastSlash+1)+"README", ios::out|ios::app);
+	if(readme.fail())
+	{
+		std::cout << "Error for creating the file for output!" << std::endl;
+		exit(1);
+	}
+	readme << "The time for the data set " << _data_set << " takes " << timeSpent << " seconds." << std::endl;
+	readme.close();
 }
 
 
