@@ -474,8 +474,7 @@ void LocalScalar::processAlignmentByPointWise()
 	timeTemp = ((end.tv_sec  - start.tv_sec) * 1000000u + end.tv_usec - start.tv_usec) / 1.e6;
 	std::cout << "The total computational time is " << timeTemp << " seconds!" << std::endl;
 
-	VTKWritter::printStreamlineScalarsOnSegments(coordinates,datasetName, streamlineVertexCount,
-				segmentScalars);
+	VTKWritter::printStreamlineScalarsOnSegments(coordinates,datasetName, streamlineVertexCount, segmentScalars);
 
 	recordTime(timeTemp);
 

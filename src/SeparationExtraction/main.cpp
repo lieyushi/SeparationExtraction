@@ -62,7 +62,7 @@ void extractForPlyFile(const int& argc, char* argv[], VectorField& vf)
 	vf.readVectorField(string(argv[1]));
 	vf.printVectorFieldVTK();
 
-	double integrationStep;
+	double integrationStepRatio;
 	int maxLength, maxSeeding;
 
 	int automaticParameter;
@@ -73,9 +73,9 @@ void extractForPlyFile(const int& argc, char* argv[], VectorField& vf)
 	if(automaticParameter)
 	{
 		// parameter setting for streamline tracing
-		std::cout << "Please input the streamline integration step: " << std::endl;
-		std::cin >> integrationStep;
-		assert(integrationStep>0);
+		std::cout << "Please input the streamline integration ratio between (0,0.1): " << std::endl;
+		std::cin >> integrationStepRatio;
+		assert(integrationStepRatio>0 && integrationStepRatio<0.1);
 
 		std::cout << "Please input the maximal count on a single streamline: " << std::endl;
 		std::cin >> maxLength;
@@ -87,13 +87,13 @@ void extractForPlyFile(const int& argc, char* argv[], VectorField& vf)
 	}
 	else
 	{
-		integrationStep = 0.004;
+		integrationStepRatio = 0.2;
 		maxLength = 800;
 		maxSeeding = 625;
 	}
 
 	// trace streamlines w.r.t. given parameters
-	vf.traceStreamlines(integrationStep, maxLength, maxSeeding);
+	vf.traceStreamlines(integrationStepRatio, maxLength, maxSeeding);
 
 	// print streamline vtk file for visualization
 	vf.printStreamlinesVTK();

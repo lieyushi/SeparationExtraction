@@ -102,3 +102,17 @@ else()
 	target_link_libraries(pvOperator vtkHybrid vtkWidgets ${ALL_LIBS})
 endif()
 ###############################################
+
+###############################################
+# generate streamlineGenerator executable
+set( 
+	LOCAL_SCALAR_SRC
+   )
+file( GLOB LOCAL_SCALAR_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/StreamlineGenerator/*.cpp)  
+add_executable(streamlineGenerator ${LOCAL_SCALAR_SRC})
+if(VTK_LIBRARIES)
+	target_link_libraries(streamlineGenerator ${VTK_LIBRARIES} ${ALL_LIBS})
+else()
+	target_link_libraries(streamlineGenerator vtkHybrid vtkWidgets ${ALL_LIBS})
+endif()
+###############################################

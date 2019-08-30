@@ -91,7 +91,12 @@ public:
 	/* compute local scalar values on streamline segments */
 	void getLocalScalar();
 
+	/* destructor */
 	virtual ~LocalScalar();
+
+	/* perform the smoothing the points along the lines to re-sample the voxel information */
+
+	/* sample on the voxels from discrete 3D points */
 
 private:
 

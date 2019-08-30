@@ -14,13 +14,14 @@
 #include <eigen3/Eigen/Dense>
 #include <eigen3/Eigen/Core>
 #include <eigen3/Eigen/SVD>
+#include <bits/stdc++.h>
 #include "DataSet.h"
 
 using namespace std;
 using namespace Eigen;
 
-#define MINIMAL 5.0E-3
 
+#define MINIMAL_VELOCITY 1.0E-6
 
 // a struct to showcase a point on the streamline with a given id
 struct StreamlinePoint
@@ -50,7 +51,7 @@ public:
 	void printVectorFieldVTK();
 
 	// trace streamlines w.r.t. some parameters and seeding strategy
-	void traceStreamlines(const double& integrationStep, const int& maxLength, const int& maxSeeding);
+	void traceStreamlines(const double& integrationStepRatio, const int& maxLength, int& maxSeeding);
 
 	// print vtk for streamlines
 	void printStreamlinesVTK();
@@ -64,6 +65,9 @@ public:
 	// print streamline data sets into clustering framework
 	void printStreamlineTXT();
 
+	// elimiate short length of streamlines below numSize points
+	void filterShortStreamlines(const double& numRatio);
+
 	// storage of vertex information (coordinates and velocity components)
 	std::vector<Vertex> vertexVec;
 
@@ -73,15 +77,28 @@ public:
 	// streamline holder
 	std::vector<Eigen::VectorXd> streamlineVector;
 
+	// velocity magnitude on the streamline points
+	std::vector<std::vector<double> > lineVelocity;
+
+	// the length of streamlines to be filtered for smaller lengths
+	std::vector<double> lineLength;
+
 	// coordinates limit
 	CoordinateLimits limits[3];
 
 	// original data set name
 	string dataset_name;
 
-	// rectilinear grid information
+	// rectilinear grid information, for 2D, Z_RESOLUTION = 1
 	int X_RESOLUTION = -1, Y_RESOLUTION = -1, Z_RESOLUTION = -1;
 	double X_STEP = -1.0, Y_STEP = -1.0, Z_STEP = 1.0;
+
+	// the ratio to the diagonal distance for the distance threshold for generating streamlines far away enough
+	double minimal_ratio =  0.08;
+	double MINIMAL;
+
+	// whether the data set is 3D or not. It decides whether to call 2D or 3D interpolation
+	bool is3D = false;
 
 private:
 	// read vector field from ply file
@@ -94,12 +111,12 @@ private:
 	void readVectorFieldFromRaw(const string& fileName);
 
 	// use uniform sampling for streamline tracing
-	void uniformSeeding(std::vector<Vertex>& seeds, const int& maxSeeding);
+	void uniformSeeding(std::vector<Vertex>& seeds, int& maxSeeding);
 
 	// use entropy-based sampling for streamline tracing
 	// entropy-based computing: http://web.cse.ohio-state.edu/~shen.94/papers/xu_vis10.pdf
 	// seeding strategy: http://vis.cs.ucdavis.edu/papers/pg2011paper.pdf
-	void entropySeeding(std::vector<Vertex>& seeds, const int& maxSeeding);
+	void entropySeeding(std::vector<Vertex>& seeds, int& maxSeeding);
 
 	// fourth-order Runge-Kutta integration method for streamline tracing
 	bool getIntegrationValue(const double& step, const Eigen::Vector3d& position,
@@ -107,6 +124,12 @@ private:
 
 	// get the velocity of temporary position
 	bool getInterpolatedVelocity(const Eigen::Vector3d& position, Eigen::Vector3d& velocity);
+
+	// get the velocity of temporary position for bilinear interpolation
+	bool getInterpolatedVelocity2D(const Eigen::Vector3d& position, Eigen::Vector3d& velocity);
+
+	// get the velocity of temporary position for trilinear interpolation
+	bool getInterpolatedVelocity3D(const Eigen::Vector3d& position, Eigen::Vector3d& velocity);
 
 	// trace streamlines given seeding vertex position
 	void traceStreamlinesBySeeds(const std::vector<Vertex>& seeds, const double& step, const int& maxLength);
