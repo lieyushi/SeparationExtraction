@@ -8,27 +8,9 @@
 #ifndef SRC_LOCALSCALAR_LOCALSCALAR_H_
 #define SRC_LOCALSCALAR_LOCALSCALAR_H_
 
-#include <iostream>
-#include <vector>
-#include <math.h>
-#include <fstream>
-#include <stdlib.h>
-#include <float.h>
-#include <time.h>
-#include <sstream>
-#include <algorithm>
-#include <queue>
-#include <cassert>
-#include <sys/time.h>
-#include <eigen3/Eigen/Dense>
-#include <eigen3/Eigen/Core>
-#include <eigen3/Eigen/SVD>
-#include <unordered_map>
+#include "SuperpointGeneration.h"
 #include "SimilarityDistance.h"
 #include "VTKWritter.h"
-
-using namespace std;
-using namespace Eigen;
 
 // parameter set-up for Newton Iteration
 #define Relaxation 0.8
@@ -45,12 +27,6 @@ struct streamPoint
 	{}
 };
 
-struct coordinateLimit
-{
-	double inf, sup;
-	coordinateLimit(): inf(DBL_MAX), sup(-DBL_MAX)
-	{}
-};
 
 enum DirectionSearch
 {
@@ -94,9 +70,15 @@ public:
 	/* destructor */
 	virtual ~LocalScalar();
 
+	/* find an adaptive kernel radius r for smoothing */
+	const double getKernelRadius(const double& ratio);
+
 	/* perform the smoothing the points along the lines to re-sample the voxel information */
+	void performSmoothingOnLine(const double& r);
 
 	/* sample on the voxels from discrete 3D points */
+	void sampleOnVoxels(const double& r, std::vector<double>& voxelScalars, const double& maxBandwidth);
+
 
 private:
 
@@ -136,6 +118,15 @@ private:
 	/* whether use two of max value or not */
 	bool useMaxRatio;
 
+	/* whether use manual normalization for the KDE or not */
+	bool useManualNormalization = true;
+
+	/* the adaptive bandwidth for each point in the KDE calculation */
+	std::vector<double> bandwidth;
+
+	/* whether use the SG to get the adaptive bandwidth or not */
+	bool useSuperpoint;
+
 	/* vertex coordinates system */
 	std::vector<Eigen::Vector3d> vertexVec;
 
@@ -148,11 +139,17 @@ private:
 	/* how many directions are used */
 	int directionNumbers;
 
+	/* whether is 3D data set or not */
+	bool is3D = false;
+
+	// point-wise scalar value calculation on streamlines
+	std::vector<double> segmentScalars;
+
 	/* get user-input option */
 	void getUserInputParameter();
 
 	/* record time spent in the readme in case they are required again */
-	void recordTime(const double& timeSpent);
+	void recordTime(const std::vector<string>& events, std::vector<double>& timeSpent);
 
 	/* -----------------------------------------------------------------------------------------------------------
 	 * ---------------------------------Segments based on signature sampling--------------------------------------
@@ -177,14 +174,18 @@ private:
 	 * ---------------------------------Spatial bining operation to find knn--------------------------------------
 	 * -----------------------------------------------------------------------------------------------------------
 	 */
-	// rectilinear grid information
+	// rectilinear bin information
 	int X_RESOLUTION = -1, Y_RESOLUTION = -1, Z_RESOLUTION = -1;
 	double X_STEP = -1.0, Y_STEP = -1.0, Z_STEP = 1.0;
+
+	// rectilinear grid information
+	int X_GRID_RESOLUTION = -1, Y_GRID_RESOLUTION = -1, Z_GRID_RESOLUTION = -1;
+	double X_GRID_STEP = -1.0, Y_GRID_STEP = -1.0, Z_GRID_STEP = 1.0;
 
 	// spatial binning for checking whether current streamline points are close to existing points or not
 	std::vector<std::vector<streamPoint> > spatialBins;
 
-	coordinateLimit range[3];
+	CoordinateLimits range[3];
 
 	/* spatial bining for all the points in the grid */
 	void assignPointsToBins();
@@ -230,7 +231,9 @@ private:
 			const int& TOTALSIZE, const std::vector<int>& closestPoint, double& scalar);
 
 	/*
-	 * Some functions to be placed here to get necessary information
+	 * ----------------------------------------------------------------------------------------------------------
+	 * ------------------- Some functions to be placed here to get necessary information ------------------------
+	 * ----------------------------------------------------------------------------------------------------------
 	 */
 
 	// given a planar, get eight normalized directions separated by 45 degrees
@@ -241,6 +244,30 @@ private:
 	void findDirectionsToAngles(const Eigen::Vector3d& tangential, const Eigen::Vector3d& reference,
 			const double& angle, std::vector<Eigen::Vector3d>& directionVectors);
 
+	/*
+	 * ---------------------------------------------------------------------------------------------------------
+	 * ---------------- Perform the smoothing for the scalar values on the vertex of the line ------------------
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	// the smoothing is by using the Laplacian smoothing
+	void performLaplacianSmoothing(const int& TotalSize);
+
+	// the smoothing is by using the Kernel Density Estimation
+	void performKDE_smoothing(const double& r, const int& TotalSize);
+
+	/*
+	 * ---------------------------------------------------------------------------------------------------------
+	 * ------------------------ Find the neighboring bins for the target voxel ---------------------------------
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	// calculate the Gaussian interpolated scalars on the grid point
+	const double getInterpolatedScalar(const int& x, const int& y, const int& z, const int& X_SIZE, const int& Y_SIZE,
+			const int& Z_SIZE, const double& r, const Eigen::Vector3d& gridPoint);
+
+	// calculate the bandwidth with superpoint generation algorithm
+	const double get_kde_bandwidth(double& maxBandwidth);
 };
 
 // perform Newton iteration to solve non-linear equation

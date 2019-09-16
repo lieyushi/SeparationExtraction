@@ -36,11 +36,12 @@ public:
 	/* print streamlines with scalars on segments */
 	static void printStreamlineScalarsOnSegments(const std::vector<Eigen::VectorXd>& coordinates,
 			const string& datasetName, const int& streamlineVertexCount, const std::vector<Eigen::VectorXd>& lineSegments,
-			const std::vector<double>& segmentScalars);
+			const std::vector<double>& segmentScalars, string info = "");
 
 	/* print streamlines with scalars on segments */
 	static void printStreamlineScalarsOnSegments(const std::vector<Eigen::VectorXd>& coordinates,
-			const string& datasetName, const int& streamlineVertexCount, const std::vector<double>& segmentScalars);
+			const string& datasetName, const int& streamlineVertexCount, const std::vector<double>& segmentScalars,
+			string info = "");
 
 	/* print 3d vector field with regular grid */
 	static void printVectorField(const string& fileName, const std::vector<Vertex>& vertexVec,
@@ -50,6 +51,10 @@ public:
 	/* print 3d point cloud */
 	static void printPoints(const string& fileName, const std::vector<Eigen::Vector3d>& pointArray);
 
+	/* print the 3D volume rendering with scalar values */
+	static void printVolumeScalars(const string& fileName, const std::vector<double>& scalarValues,
+			CoordinateLimits limits[], const int& x_resolution, const int& y_resolution, const int& z_resolution,
+						const double& x_step, const double& y_step, const double& z_step);
 };
 
 #endif /* SRC_COMMON_VTKWRITTER_H_ */

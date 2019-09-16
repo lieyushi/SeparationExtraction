@@ -80,9 +80,12 @@ void LocalScalar::getUserInputParameter()
 	int scalarMeasurement;
 
 	/* segment option, 1.log2(vertexSize) sampling, 2.3-1-3 sampling, 3.curvature threshold sampling */
+	/*
 	std::cout << "Choose a segmentation option for streamlines, 1.log(vertexSize) sampling, 2.3-1-3 sampling," << std::endl;
 	std::cin >> segmentOption;
 	assert(segmentOption==1 || segmentOption==2 || segmentOption==3);
+	*/
+	segmentOption = 2;
 
 	/* k value in KNN */
 	std::cout << "Choose the k for KNN kernel: " << std::endl;
@@ -219,14 +222,18 @@ void LocalScalar::assignPointsToBins()
 
 	if(range[2].sup-range[2].inf<=1.0E-3)
 	{
-		X_RESOLUTION = 51, Y_RESOLUTION = 51, Z_RESOLUTION = 1;
+		float y_to_x = (range[1].sup-range[1].inf)/(range[0].sup-range[0].inf);
+		X_RESOLUTION = 101, Y_RESOLUTION = y_to_x*X_RESOLUTION, Z_RESOLUTION = 1;
 		X_STEP = (range[0].sup-range[0].inf)/float(X_RESOLUTION-1);
 		Y_STEP = (range[1].sup-range[1].inf)/float(Y_RESOLUTION-1);
 		Z_STEP = 1.0E5;
 	}
 	else
 	{
-		X_RESOLUTION = 31, Y_RESOLUTION = 31, Z_RESOLUTION = 31;
+		is3D = true;
+		float y_to_x = (range[1].sup-range[1].inf)/(range[0].sup-range[0].inf);
+		float z_to_x = (range[2].sup-range[2].inf)/(range[0].sup-range[0].inf);
+		X_RESOLUTION = 101, Y_RESOLUTION = y_to_x*X_RESOLUTION, Z_RESOLUTION = z_to_x*X_RESOLUTION;
 		X_STEP = (range[0].sup-range[0].inf)/float(X_RESOLUTION-1);
 		Y_STEP = (range[1].sup-range[1].inf)/float(Y_RESOLUTION-1);
 		Z_STEP = (range[2].sup-range[2].inf)/float(Z_RESOLUTION-1);
@@ -411,7 +418,8 @@ void LocalScalar::processWithBinsOnSegments(const std::vector<int>& pointToSegme
 }
 
 
-/* follow a 3-1-3 alignment, judge point distance with lnk/(lnk+1) mapping such that
+/*
+ * follow a 3-1-3 alignment, judge point distance with lnk/(lnk+1) mapping such that
  * 0, infinite large--->1 (stronger separation), 1--->0 (weaker separation)
  */
 void LocalScalar::processAlignmentByPointWise()
@@ -419,7 +427,7 @@ void LocalScalar::processAlignmentByPointWise()
 	assignPointsToBins();
 
 	// point-wise scalar value calculation on streamlines
-	std::vector<double> segmentScalars(streamlineVertexCount);
+	segmentScalars.resize(streamlineVertexCount);
 
 	std::cout << "Choose neighborhood search strategy: 1.KNN, 2.left and right closest (2D only), "
 			"3.search along 8 directions on the plane (3D only), 4.search along directions of 9 voxels (3D only)."
@@ -470,19 +478,53 @@ void LocalScalar::processAlignmentByPointWise()
 		}
 	}
 
+	// record the events and time spent
+	std::vector<string> events;
+	std::vector<double> timeSpent;
+
+	// record the time for local scalar value calculation
 	gettimeofday(&end, NULL);
 	timeTemp = ((end.tv_sec  - start.tv_sec) * 1000000u + end.tv_usec - start.tv_usec) / 1.e6;
-	std::cout << "The total computational time is " << timeTemp << " seconds!" << std::endl;
+	std::cout << "The time for scalar value calculation is " << timeTemp << " seconds!" << std::endl;
 
-	VTKWritter::printStreamlineScalarsOnSegments(coordinates,datasetName, streamlineVertexCount, segmentScalars);
+	events.push_back("local scalar calculation");
+	timeSpent.push_back(timeTemp);
 
-	recordTime(timeTemp);
+	VTKWritter::printStreamlineScalarsOnSegments(coordinates,datasetName, streamlineVertexCount, segmentScalars,
+			"noSmooth");
 
+	// select the option whether to enable automaticly adaptive bandwidth
+	double maxBandwidth;
+	const double& r = get_kde_bandwidth(maxBandwidth);
+
+	/* perform the smoothing the points along the lines to re-sample the voxel information */
+	performSmoothingOnLine(r);
+
+	/* print the visualization for the scalar values after smoothing operation */
+	VTKWritter::printStreamlineScalarsOnSegments(coordinates,datasetName, streamlineVertexCount, segmentScalars,
+			"Smooth");
+
+	std::vector<double> voxelScalars;
+	/* sample on the voxels from discrete 3D points */
+	sampleOnVoxels(r, voxelScalars, maxBandwidth);
+
+	// finish recording the time
+	gettimeofday(&end, NULL);
+	timeTemp = ((end.tv_sec  - start.tv_sec) * 1000000u + end.tv_usec - start.tv_usec) / 1.e6;
+	std::cout << "The time for smoothing and voxelization is " << timeTemp << " seconds!" << std::endl;
+
+	events.push_back("smoothing and voxelization calculation");
+	timeSpent.push_back(timeTemp);
+
+	VTKWritter::printVolumeScalars(datasetName, voxelScalars, range, X_GRID_RESOLUTION, Y_GRID_RESOLUTION,
+			Z_GRID_RESOLUTION, X_GRID_STEP, Y_GRID_STEP, Z_GRID_STEP);
+
+	recordTime(events, timeSpent);
 }
 
 
 /* record time spent in the readme in case they are required again */
-void LocalScalar::recordTime(const double& timeSpent)
+void LocalScalar::recordTime(const std::vector<string>& events, std::vector<double>& timeSpent)
 {
 	// find the last '/' in the data set name
 	int lastSlash = -1;
@@ -503,7 +545,11 @@ void LocalScalar::recordTime(const double& timeSpent)
 		std::cout << "Error for creating the file for output!" << std::endl;
 		exit(1);
 	}
-	readme << "The time for the data set " << _data_set << " takes " << timeSpent << " seconds." << std::endl;
+	readme << "--------------------------------------------------------------------------------------" << std::endl;
+	readme << "For " << _data_set << ":" << std::endl;
+
+	for(int i=0; i<events.size(); ++i)
+		readme << "The time for " << events[i] << " takes " << timeSpent[i] << " seconds." << std::endl;
 	readme.close();
 }
 
@@ -826,7 +872,7 @@ void LocalScalar::getScalarsFromNeighbors(const int& j, const std::vector<int>& 
 	const int& firstBegin = first[0];
 	const int& firstEnd = first.back();
 
-	double ratio, start_dist, end_dist;
+	double ratio, start_dist, end_dist, mid_dist;
 	int effective = 0;
 	for(int i=0; i<closestPoint.size(); ++i)
 	{
@@ -840,22 +886,27 @@ void LocalScalar::getScalarsFromNeighbors(const int& j, const std::vector<int>& 
 		{
 			end_dist = (vertexVec[firstEnd]-vertexVec[candStreamline[0]+TOTALSIZE-1]).norm();
 			start_dist = (vertexVec[firstBegin]-vertexVec[candStreamline[0]]).norm();
+			mid_dist = (vertexVec[firstBegin+HALF]-vertexVec[candStreamline[0]+HALF]).norm();
 		}
 		else if(candStreamline.back()-candidate<=HALF)
 		{
 			end_dist = (vertexVec[firstEnd]-vertexVec[candStreamline.back()]).norm();
 			start_dist = (vertexVec[firstBegin]-vertexVec[candStreamline[candSize-TOTALSIZE]]).norm();
+			mid_dist = (vertexVec[firstBegin+HALF]-vertexVec[candStreamline[candSize-HALF-1]]).norm();
 		}
 		else
 		{
 			end_dist = (vertexVec[firstEnd]-vertexVec[candidate+HALF]).norm();
 			start_dist = (vertexVec[firstBegin]-vertexVec[candidate-HALF]).norm();
+			mid_dist = (vertexVec[firstBegin+HALF]-vertexVec[candidate]).norm();
 		}
 
 		if(start_dist<1.0E-8)
 			continue;
 
-		ratio = end_dist/start_dist;
+		// ratio = end_dist/start_dist;
+		ratio = std::max(end_dist/mid_dist, start_dist/mid_dist);
+		// ratio = end_dist*start_dist/mid_dist/mid_dist;
 
 		if(isinf(ratio))
 		{
@@ -869,6 +920,7 @@ void LocalScalar::getScalarsFromNeighbors(const int& j, const std::vector<int>& 
 			if(ratio>0 && ratio<1)
 				ratio = 1.0/ratio;
 		}
+
 		summation+=ratio;
 		++effective;
 	}
@@ -877,31 +929,13 @@ void LocalScalar::getScalarsFromNeighbors(const int& j, const std::vector<int>& 
 	if(effective==0)
 	{
 		scalar = 0;
-
 		return;
 	}
 
 	summation/=effective;
 
-	/* non-linear encoding is enabled to squeeze the scalar value inside [0,1.0] */
-	if(encodingEnabled)
-	{
-		/* summation is zero, what value should be assigned to? */
-		if(summation<1.0E-8)
-		{
-			scalar = 1.0;
-		}
-		else
-		{
-			summation = abs(log2(summation));
-			scalar = summation/(summation+1);
-		}
-	}
-	// otherwise, squeeze 1.0 to 0
-	else
-	{
-		scalar = abs(summation-1.0);
-	}
+	ratio = abs(log2(summation));
+	scalar = ratio/(ratio+1);
 }
 
 
@@ -1038,10 +1072,10 @@ void LocalScalar::searchNeighborThroughSeparateDirections(const bool& sameLineEn
 		searchThreshold = sqrt(X_STEP*X_STEP+Y_STEP*Y_STEP+Z_STEP*Z_STEP);
 	}
 	// search step size
-	double searchingStep = searchThreshold*0.05;
+	double searchingStep = searchThreshold*0.1;
 
 	// closest threshold
-	searchThreshold*=0.08;
+	searchThreshold*=0.15;
 
 	// find the perpendicular plane w.r.t. the tangent direction
 	int targetID = vertexArray[j];
@@ -1259,3 +1293,436 @@ void findSolutionByNewtonIteration(const Eigen::Vector3d& normal, const Eigen::V
 
 	// get the solution point to satisfy the nonlinear equation arrays
 }
+
+
+/* find an adaptive kernel radius r for smoothing */
+const double LocalScalar::getKernelRadius(const double& ratio)
+{
+	double radius;
+
+	// calculate the diagonal distance of the voxel
+	if(Z_RESOLUTION==1)	// for 2D case
+		radius = std::sqrt(X_STEP*X_STEP+Y_STEP*Y_STEP);
+	else
+		radius = std::sqrt(X_STEP*X_STEP+Y_STEP*Y_STEP+Z_STEP*Z_STEP);
+	radius*= ratio;
+	return radius;
+}
+
+
+/* perform the smoothing the points along the lines to re-sample the voxel information */
+void LocalScalar::performSmoothingOnLine(const double& r)
+{
+	// select the smoothing option
+	int smoothingStrategy;
+	std::cout << "Select the smoothing strategy: 1.Laplacian linear smoothing, 2.Kernel Density Estimation: " << std::endl;
+	std::cin >> smoothingStrategy;
+	assert(smoothingStrategy==1 || smoothingStrategy==2);
+
+	const int& TotalSize = 7;
+
+	// using the Laplacian linear smoothing
+	if(smoothingStrategy==1)
+		performLaplacianSmoothing(TotalSize);
+	else if(smoothingStrategy==2)
+		performKDE_smoothing(r, TotalSize);
+}
+
+
+// the smoothing is by using the Laplacian smoothing, it is a linearly combined smoothing w.r.t. distance
+void LocalScalar::performLaplacianSmoothing(const int& TotalSize)
+{
+	std::vector<double> new_scalars = segmentScalars;
+
+	// each scalar values will be calculated as the neighboring points on the line
+#pragma omp parallel for schedule(static) num_threads(8)
+	for(int i=0; i<streamlineCount; ++i)
+	{
+		const std::vector<int>& vertexArray = streamlineToVertex[i];
+		const int& arraySize = vertexArray.size();
+
+		// if there are fewer than 7 vertices on the streamlines, will not smooth it
+		if(arraySize<TotalSize)
+			continue;
+
+		for(int j=0; j<arraySize; ++j)
+		{
+			double summation = 0.0;
+			const int& current_index = vertexArray[j];
+
+			// calculating the averaged values of the 7 neighboring points
+			const int& HALF = TotalSize/2;
+			if(j<=HALF)
+			{
+				for(int k=0; k<TotalSize; ++k)
+				{
+					if(k!=j)	// don't include itself
+						summation += segmentScalars[vertexArray[k]];
+				}
+			}
+			else if(j>=arraySize-HALF-1)
+			{
+				for(int k=0; k<TotalSize; ++k)
+				{
+					if(j!=arraySize-TotalSize+k)	// don't include itself
+						summation += segmentScalars[vertexArray[arraySize-TotalSize+k]];
+				}
+			}
+			else
+			{
+				for(int k=-HALF; k<=HALF; ++k)
+				{
+					if(k)	// don't include itself
+						summation += segmentScalars[vertexArray[j+k]];
+				}
+			}
+			new_scalars[current_index] = summation/TotalSize;
+		}
+	}
+
+	// re-assign the segmentScalars
+	segmentScalars = new_scalars;
+}
+
+
+// the smoothing is by using the Gaussian kernel (https://en.wikipedia.org/wiki/Kernel_smoother)
+void LocalScalar::performKDE_smoothing(const double& r, const int& TotalSize)
+{
+	std::vector<double> new_scalars = segmentScalars;
+
+	// each scalar values will be calculated as the neighboring points on the line
+#pragma omp parallel for schedule(static) num_threads(8)
+	for(int i=0; i<streamlineCount; ++i)
+	{
+		const std::vector<int>& vertexArray = streamlineToVertex[i];
+		const int& arraySize = vertexArray.size();
+
+		// if there are fewer than 7 vertices on the streamlines, will not smooth it
+		if(arraySize<TotalSize)
+			continue;
+
+		for(int j=0; j<arraySize; ++j)
+		{
+			double summation = 0.0, sum_coefficient = 0.0, coefficient;
+			const int& current_index = vertexArray[j];
+			Eigen::Vector3d neighborCoordinate, difference;
+			Eigen::Vector3d current_coordinate = Eigen::Vector3d(coordinates[i][3*j], coordinates[i][3*j+1],
+					coordinates[i][3*j+2]);
+			int neighborIndex;
+
+			// calculating the averaged values of the 7 neighboring points
+			const int& HALF = TotalSize/2;
+
+			double one_divided_by_r_r;
+			// get the 2.0*r*r
+			if(useSuperpoint)
+				one_divided_by_r_r = 1.0/2.0*bandwidth[j]*bandwidth[j];
+			else
+				one_divided_by_r_r = 1.0/(2.0*r*r);
+
+			if(j<=HALF)
+			{
+				for(int k=0; k<TotalSize; ++k)
+				{
+					if(k!=j)	// don't include itself
+					{
+						neighborCoordinate = Eigen::Vector3d(coordinates[i][3*k], coordinates[i][3*k+1],
+											 coordinates[i][3*k+2]);
+						difference = neighborCoordinate-current_coordinate;
+
+						if(useManualNormalization)
+						{
+							coefficient = exp(-difference.transpose().dot(difference)*one_divided_by_r_r);
+							sum_coefficient += coefficient;
+						}
+						else
+						{
+							if(is3D)	// 3D use cubic
+								coefficient = bandwidth[j]*bandwidth[j]*bandwidth[j]
+										  *exp(-difference.transpose().dot(difference)*one_divided_by_r_r);
+							else	// 2D use quadratic
+								coefficient = bandwidth[j]*bandwidth[j]*
+								exp(-difference.transpose().dot(difference)*one_divided_by_r_r);
+						}
+						summation += coefficient*segmentScalars[vertexArray[k]];
+					}
+				}
+			}
+			else if(j>=arraySize-HALF-1)
+			{
+				for(int k=0; k<TotalSize; ++k)
+				{
+					if(j!=arraySize-TotalSize+k)	// don't include itself
+					{
+						neighborIndex = arraySize-TotalSize+k;
+						neighborCoordinate = Eigen::Vector3d(coordinates[i][3*neighborIndex],
+								coordinates[i][3*neighborIndex+1], coordinates[i][3*neighborIndex+2]);
+						difference = neighborCoordinate-current_coordinate;
+
+						if(useManualNormalization)
+						{
+							coefficient = exp(-difference.transpose().dot(difference)*one_divided_by_r_r);
+							sum_coefficient += coefficient;
+						}
+						else
+						{
+							if(is3D)	// 3D case cubic
+								coefficient = bandwidth[j]*bandwidth[j]*bandwidth[j]*
+								exp(-difference.transpose().dot(difference)*one_divided_by_r_r);
+							else	// 2D quadratic
+								coefficient = bandwidth[j]*bandwidth[j]*
+								exp(-difference.transpose().dot(difference)*one_divided_by_r_r);
+						}
+						summation += coefficient*segmentScalars[vertexArray[neighborIndex]];
+					}
+				}
+			}
+			else
+			{
+				for(int k=-HALF; k<=HALF; ++k)
+				{
+					if(k)	// don't include itself
+					{
+						neighborIndex = j+k;
+						neighborCoordinate = Eigen::Vector3d(coordinates[i][3*neighborIndex],
+								coordinates[i][3*neighborIndex+1], coordinates[i][3*neighborIndex+2]);
+						difference = neighborCoordinate-current_coordinate;
+
+						if(useManualNormalization)
+						{
+							coefficient = exp(-difference.transpose().dot(difference)*one_divided_by_r_r);
+							sum_coefficient += coefficient;
+						}
+						else
+						{
+							if(is3D)
+								coefficient = bandwidth[j]*bandwidth[j]*bandwidth[j]*
+									exp(-difference.transpose().dot(difference)*one_divided_by_r_r);
+							else
+								coefficient = bandwidth[j]*bandwidth[j]*
+								exp(-difference.transpose().dot(difference)*one_divided_by_r_r);
+						}
+
+						summation += coefficient*segmentScalars[vertexArray[neighborIndex]];
+					}
+				}
+			}
+
+			if(!useManualNormalization)	// use default KDE formula without additional normalization
+			{
+				if(is3D)	// is 3D data set
+					sum_coefficient = TotalSize*(sqrt(2.0*M_PI), 3.0);
+				else	// is 2D data set
+					sum_coefficient = TotalSize*(sqrt(2.0*M_PI), 2.0);
+			}
+
+			if(sum_coefficient>=1.0E-6)
+				new_scalars[current_index] = summation/sum_coefficient;
+		}
+	}
+
+	// re-assign the segmentScalars
+	segmentScalars = new_scalars;
+}
+
+
+/* sample on the voxels from discrete 3D points */
+void LocalScalar::sampleOnVoxels(const double& r, std::vector<double>& voxelScalars, const double& maxBandwidth)
+{
+	const int& totalVoxelSize = X_GRID_RESOLUTION*Y_GRID_RESOLUTION*Z_GRID_RESOLUTION;
+	const int& xy_multiplication = X_GRID_RESOLUTION*Y_GRID_RESOLUTION;
+
+	int X_GRID_SIZE, Y_GRID_SIZE, Z_GRID_SIZE;
+	if(!useSuperpoint)
+	{
+		X_GRID_SIZE = 4*r/X_STEP;
+		Y_GRID_SIZE = 4*r/Y_STEP;
+		Z_GRID_SIZE = 4*r/Z_STEP;
+	}
+	else
+	{
+		X_GRID_SIZE = 4*maxBandwidth/X_STEP;
+		Y_GRID_SIZE = 4*maxBandwidth/Y_STEP;
+		Z_GRID_SIZE = 4*maxBandwidth/Z_STEP;
+	}
+
+	std::cout << X_GRID_SIZE << " " << Y_GRID_SIZE << " " << Z_GRID_SIZE << std::endl;
+
+	voxelScalars.resize(totalVoxelSize);
+
+	// calculate the scalar values on the grid
+	for(int k=0; k<Z_GRID_RESOLUTION; ++k)
+	{
+#pragma omp parallel for schedule(static) num_threads(8)
+		for(int j=0; j<Y_GRID_RESOLUTION; ++j)
+		{
+			for(int i=0; i<X_GRID_RESOLUTION; ++i)
+			{
+				double value_summation = 0.0, coefficient_summation = 0.0;
+
+				// Eigen::Vector3d object for calculating the Euclidean norm
+				Eigen::Vector3d gridPoint = Eigen::Vector3d(range[0].inf+X_GRID_STEP*i, range[1].inf+Y_GRID_STEP*j,
+						range[2].inf+Z_GRID_STEP*k);
+
+				// find the current bin of this point
+				int x = (gridPoint(0)-range[0].inf)/X_STEP;
+				int y = (gridPoint(1)-range[1].inf)/Y_STEP;
+				int z = (gridPoint(2)-range[2].inf)/Z_STEP;
+
+				// calculate the Gaussian interpolated scalars on the grid point
+				voxelScalars[k*xy_multiplication+j*X_GRID_RESOLUTION+i] = getInterpolatedScalar(x, y, z, X_GRID_SIZE,
+						Y_GRID_SIZE, Z_GRID_SIZE, r, gridPoint);
+			}
+		}
+	}
+}
+
+
+// calculate the Gaussian interpolated scalars on the grid point
+const double LocalScalar::getInterpolatedScalar(const int& x, const int& y, const int& z, const int& X_SIZE,
+		const int& Y_SIZE, const int& Z_SIZE, const double& r, const Eigen::Vector3d& gridPoint)
+{
+	// initialize preliminary variables
+	double summation = 0.0, coefficient, coefficient_summation = 0.0;
+	const int& xy_multiplication = X_RESOLUTION*Y_RESOLUTION;
+
+	double one_divided_by_r_squared;
+
+	// assign temporary cache memory
+	std::vector<streamPoint> localBin;
+
+	// Eigen::Vector3d object for calculating the Euclidean norm
+	Eigen::Vector3d diff;
+	int count = 0;
+
+	for(int k=std::max(0,z-Z_SIZE); k<=std::min(Z_RESOLUTION-1,z+Z_SIZE); ++k)
+	{
+		for(int j=std::max(0,y-Y_SIZE); j<=std::min(Y_RESOLUTION-1,y+Y_SIZE); ++j)
+		{
+			for(int i=std::max(0,x-X_SIZE); i<=std::min(X_RESOLUTION-1,x+X_SIZE); ++i)
+			{
+				localBin = spatialBins[k*xy_multiplication+j*X_RESOLUTION+i];
+				for(auto &v:localBin)
+				{
+					diff = gridPoint-vertexVec[v.vertexID];
+
+					if(useSuperpoint)
+					{
+						if(diff.norm()>4.0/bandwidth[v.vertexID])	// already exceed 4.0r^2, will be ignored
+							continue;
+
+						one_divided_by_r_squared = 1.0/2.0*bandwidth[v.vertexID]*bandwidth[v.vertexID];
+
+						if(useManualNormalization)	// use enforced normalization
+						{
+							coefficient = exp(-diff.transpose().dot(diff)*one_divided_by_r_squared);
+							coefficient_summation += coefficient;
+						}
+						else	// no manual normalization required, just use regular KDE
+						{
+							if(is3D)	// 3D data set
+								coefficient = bandwidth[v.vertexID]*bandwidth[v.vertexID]*bandwidth[v.vertexID]*
+											  exp(-diff.transpose().dot(diff)*one_divided_by_r_squared);
+							else	// 2D data set
+								coefficient = bandwidth[v.vertexID]*bandwidth[v.vertexID]*
+											  exp(-diff.transpose().dot(diff)*one_divided_by_r_squared);
+						}
+					}
+					else	// not use the superpoint generation but instead use a user-selective bandwidth
+					{
+						if(diff.norm()>4.0*r*r)	// >4*sigma^2 will be ignored
+							continue;
+
+						one_divided_by_r_squared = 1.0/2.0/r/r;
+						coefficient = exp(-diff.transpose().dot(diff)*one_divided_by_r_squared);
+					}
+
+					summation += coefficient*segmentScalars[v.vertexID];
+					++count;
+				}
+			}
+		}
+	}
+
+	if(count==0)	// the null point without enough neighbors
+	{
+		return 0.0;
+	}
+
+	if(!useManualNormalization)		// directly call the KDE normalization, then assign to Gaussian integrals
+	{
+		if(!is3D)	// 2D case
+			coefficient_summation = std::pow(sqrt(2.0*M_PI),2.0)*count;
+		else
+			coefficient_summation = std::pow(sqrt(2.0*M_PI),3.0)*count;
+	}
+
+	return summation/coefficient_summation;
+}
+
+
+// calculate the bandwidth with superpoint generation algorithm or not based on user selection of whether to
+// invoke the manual input selection
+const double LocalScalar::get_kde_bandwidth(double& maxBandwidth)
+{
+	double r = 0.0;
+
+	// enable customized parameter for the resolution for x
+	std::cout << "Choose the x resolution: " << std::endl;
+	std::cin >> X_GRID_RESOLUTION;
+	assert(X_GRID_RESOLUTION>0);
+
+	if(!is3D)
+	{
+		float y_to_x = (range[1].sup-range[1].inf)/(range[0].sup-range[0].inf);
+		Y_GRID_RESOLUTION = y_to_x*X_GRID_RESOLUTION+0.5, Z_GRID_RESOLUTION = 1;
+		X_GRID_STEP = (range[0].sup-range[0].inf)/float(X_GRID_RESOLUTION-1);
+		Y_GRID_STEP = (range[1].sup-range[1].inf)/float(Y_GRID_RESOLUTION-1);
+		Z_GRID_STEP = 1.0E5;
+	}
+	else
+	{
+		float y_to_x = (range[1].sup-range[1].inf)/(range[0].sup-range[0].inf);
+		float z_to_x = (range[2].sup-range[2].inf)/(range[0].sup-range[0].inf);
+		Y_GRID_RESOLUTION = y_to_x*X_GRID_RESOLUTION+0.5, Z_GRID_RESOLUTION = z_to_x*X_GRID_RESOLUTION+0.5;
+		X_GRID_STEP = (range[0].sup-range[0].inf)/float(X_GRID_RESOLUTION-1);
+		Y_GRID_STEP = (range[1].sup-range[1].inf)/float(Y_GRID_RESOLUTION-1);
+		Z_GRID_STEP = (range[2].sup-range[2].inf)/float(Z_GRID_RESOLUTION-1);
+	}
+
+	// choose how to get the bandwidth
+	std::cout << "Whether use Superpoint Generation (SG) to get the adaptive bandwidth? 1. Yes, 0. No:" << std::endl;
+	int useSG_option;
+	std::cin >> useSG_option;
+	assert(useSG_option==0 || useSG_option==1);
+	useSuperpoint = (useSG_option==1);
+
+	// use adaptive bandwidth
+	if(useSuperpoint)
+	{
+		SuperpointGeneration sg;
+
+		int numOfClusters;
+
+		if(!is3D)
+			numOfClusters = std::sqrt(X_GRID_RESOLUTION*Y_GRID_RESOLUTION)/8;
+		else
+			numOfClusters = std::pow(X_GRID_RESOLUTION*Y_GRID_RESOLUTION*Z_GRID_RESOLUTION, 1.0/3.0)/8;
+
+		std::cout << "The number of superpoint is " << numOfClusters << std::endl;
+		sg.get_superpoint_bandwidth(vertexVec, numOfClusters, bandwidth, maxBandwidth);
+	}
+	else
+	{
+		// select the ratio for Gaussian kernel size
+		std::cout << "Select the ratio for the Gaussian kernel size: " << std::endl;
+		double ratio;
+		std::cin >> ratio;
+		assert(ratio>0);
+
+		r = getKernelRadius(ratio);
+	}
+
+	return r;
+}
+

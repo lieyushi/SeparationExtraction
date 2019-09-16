@@ -87,7 +87,7 @@ void VTKWritter::printStreamlineSegments(const std::vector<Eigen::VectorXd>& coo
 /* print streamlines with scalars on segments */
 void VTKWritter::printStreamlineScalarsOnSegments(const std::vector<Eigen::VectorXd>& coordinates,
 		const string& datasetName, const int& streamlineVertexCount, const std::vector<Eigen::VectorXd>& lineSegments,
-		const std::vector<double>& segmentScalars)
+		const std::vector<double>& segmentScalars, string info)
 {
 	if(coordinates.empty())
 		return;
@@ -96,7 +96,11 @@ void VTKWritter::printStreamlineScalarsOnSegments(const std::vector<Eigen::Vecto
 	const int& numberOfSegments = lineSegments.size();
 
 	stringstream ss;
-	ss << datasetName << "_streamline.vtk";
+
+	if(!info.empty())
+		ss << datasetName << "_streamline_" << info << ".vtk";
+	else
+		ss << datasetName << "_streamline.vtk";
 
 	std::ofstream fout(ss.str().c_str(), ios::out);
 	if(!fout)
@@ -169,7 +173,8 @@ void VTKWritter::printStreamlineScalarsOnSegments(const std::vector<Eigen::Vecto
 
 /* print streamlines with scalars on segments */
 void VTKWritter::printStreamlineScalarsOnSegments(const std::vector<Eigen::VectorXd>& coordinates,
-		const string& datasetName, const int& streamlineVertexCount, const std::vector<double>& segmentScalars)
+		const string& datasetName, const int& streamlineVertexCount, const std::vector<double>& segmentScalars,
+		string info)
 {
 	if(coordinates.empty())
 		return;
@@ -177,7 +182,11 @@ void VTKWritter::printStreamlineScalarsOnSegments(const std::vector<Eigen::Vecto
 	const int& streamlineCount = coordinates.size();
 
 	stringstream ss;
-	ss << datasetName << "_streamline.vtk";
+
+	if(!info.empty())
+		ss << datasetName << "_streamline_" << info << ".vtk";
+	else
+		ss << datasetName << "_streamline.vtk";
 
 	std::ofstream fout(ss.str().c_str(), ios::out);
 	if(!fout)
@@ -340,4 +349,41 @@ void VTKWritter::printPoints(const string& fileName, const std::vector<Eigen::Ve
 		fout << 1 << endl;
 	}
     fout.close();
+}
+
+
+/* print the 3D volume rendering with scalar values */
+void VTKWritter::printVolumeScalars(const string& fileName, const std::vector<double>& scalarValues,
+		CoordinateLimits limits[3], const int& x_resolution, const int& y_resolution, const int& z_resolution,
+					const double& x_step, const double& y_step, const double& z_step)
+{
+	// create vtk file
+	stringstream ss;
+	ss << fileName << "_volume.vtk";
+	std::ofstream fout(ss.str().c_str(), ios::out);
+	if(fout.fail())
+	{
+		std::cout << "Error for creating vector field vtk file!" << std::endl;
+		exit(1);
+	}
+
+	// writing out the vector field vtk information
+	fout << "# vtk DataFile Version 3.0" << endl;
+	fout << "Volume example" << endl;
+	fout << "ASCII" << endl;
+	fout << "DATASET STRUCTURED_POINTS" << endl;
+	fout << "DIMENSIONS " << x_resolution << " " << y_resolution << " " << z_resolution << endl;
+	fout << "ASPECT_RATIO " << x_step << " " << y_step << " " << z_step << endl;
+	fout << "ORIGIN " << limits[0].inf << " " << limits[1].inf << " " << limits[2].inf << endl;
+	fout << "POINT_DATA " << x_resolution*y_resolution*z_resolution << endl;
+
+	const int& SLICE_NUMBER = x_resolution*y_resolution;
+
+	fout << "SCALARS separation_scalars double 1" << endl;
+	fout << "LOOKUP_TABLE velo_table" << endl;
+
+	for(int i=0; i<scalarValues.size(); ++i)
+		fout << scalarValues[i] << std::endl;
+
+	fout.close();
 }
