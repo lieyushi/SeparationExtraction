@@ -8,6 +8,10 @@
 #ifndef SRC_LOCALSCALAR_LOCALSCALAR_H_
 #define SRC_LOCALSCALAR_LOCALSCALAR_H_
 
+#include <unordered_map>
+#include <sstream>
+#include <cctype>
+
 #include "SuperpointGeneration.h"
 #include "SimilarityDistance.h"
 #include "VTKWritter.h"
@@ -77,7 +81,7 @@ public:
 	void performSmoothingOnLine(const double& r);
 
 	/* sample on the voxels from discrete 3D points */
-	void sampleOnVoxels(const double& r, std::vector<double>& voxelScalars, const double& maxBandwidth);
+	void sampleOnVoxels(const double& r, std::vector<double>& voxelScalars);
 
 
 private:
@@ -119,7 +123,7 @@ private:
 	bool useMaxRatio;
 
 	/* whether use manual normalization for the KDE or not */
-	bool useManualNormalization = true;
+	bool useManualNormalization = false;
 
 	/* the adaptive bandwidth for each point in the KDE calculation */
 	std::vector<double> bandwidth;
@@ -262,12 +266,13 @@ private:
 	 * ---------------------------------------------------------------------------------------------------------
 	 */
 
-	// calculate the Gaussian interpolated scalars on the grid point
-	const double getInterpolatedScalar(const int& x, const int& y, const int& z, const int& X_SIZE, const int& Y_SIZE,
-			const int& Z_SIZE, const double& r, const Eigen::Vector3d& gridPoint);
-
 	// calculate the bandwidth with superpoint generation algorithm
-	const double get_kde_bandwidth(double& maxBandwidth);
+	const double get_kde_bandwidth();
+
+	// calculate the splatting effect from the KDE function
+	void splat_kde(const int& index, const double& kernel_radius, std::vector<double>& voxelScalars,
+			std::vector<double>& coefficient_summation, std::vector<int>& neighborCount);
+
 };
 
 // perform Newton iteration to solve non-linear equation

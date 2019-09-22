@@ -494,8 +494,7 @@ void LocalScalar::processAlignmentByPointWise()
 			"noSmooth");
 
 	// select the option whether to enable automaticly adaptive bandwidth
-	double maxBandwidth;
-	const double& r = get_kde_bandwidth(maxBandwidth);
+	const double& r = get_kde_bandwidth();
 
 	/* perform the smoothing the points along the lines to re-sample the voxel information */
 	performSmoothingOnLine(r);
@@ -506,7 +505,7 @@ void LocalScalar::processAlignmentByPointWise()
 
 	std::vector<double> voxelScalars;
 	/* sample on the voxels from discrete 3D points */
-	sampleOnVoxels(r, voxelScalars, maxBandwidth);
+	sampleOnVoxels(r, voxelScalars);
 
 	// finish recording the time
 	gettimeofday(&end, NULL);
@@ -904,15 +903,9 @@ void LocalScalar::getScalarsFromNeighbors(const int& j, const std::vector<int>& 
 		if(start_dist<1.0E-8)
 			continue;
 
-		// ratio = end_dist/start_dist;
 		ratio = std::max(end_dist/mid_dist, start_dist/mid_dist);
+		// ratio = end_dist/start_dist;
 		// ratio = end_dist*start_dist/mid_dist/mid_dist;
-
-		if(isinf(ratio))
-		{
-			std::cout << "Found inf! Program exit! " << end_dist << " " << start_dist << std::endl;
-			exit(1);
-		}
 
 		// use the max of divergence and convergence rate, so only consider 0 < ratio < 1
 		if(useMaxRatio)
@@ -1526,144 +1519,56 @@ void LocalScalar::performKDE_smoothing(const double& r, const int& TotalSize)
 }
 
 
-/* sample on the voxels from discrete 3D points */
-void LocalScalar::sampleOnVoxels(const double& r, std::vector<double>& voxelScalars, const double& maxBandwidth)
+/* sample on the voxels from discrete 3D points. To save computational efficiency, we will use splatting algorithm */
+void LocalScalar::sampleOnVoxels(const double& r, std::vector<double>& voxelScalars)
 {
+	std::cout << "Sampling on [" << X_GRID_RESOLUTION << "," << Y_GRID_RESOLUTION << "," << Z_GRID_RESOLUTION
+	          << "] point grid started..." << std::endl;
+
 	const int& totalVoxelSize = X_GRID_RESOLUTION*Y_GRID_RESOLUTION*Z_GRID_RESOLUTION;
 	const int& xy_multiplication = X_GRID_RESOLUTION*Y_GRID_RESOLUTION;
 
-	int X_GRID_SIZE, Y_GRID_SIZE, Z_GRID_SIZE;
-	if(!useSuperpoint)
+	// intialize the vector to be zero,
+	voxelScalars = std::vector<double>(totalVoxelSize, 0.0);
+	std::vector<double> coefficient_summation(totalVoxelSize, 0.0);
+	std::vector<int> neighborCount(totalVoxelSize, 0);
+
+	for(int i=0; i<streamlineVertexCount; ++i)
 	{
-		X_GRID_SIZE = 4*r/X_STEP;
-		Y_GRID_SIZE = 4*r/Y_STEP;
-		Z_GRID_SIZE = 4*r/Z_STEP;
-	}
-	else
-	{
-		X_GRID_SIZE = 4*maxBandwidth/X_STEP;
-		Y_GRID_SIZE = 4*maxBandwidth/Y_STEP;
-		Z_GRID_SIZE = 4*maxBandwidth/Z_STEP;
+		// calculate the splatting effect from the KDE function
+		splat_kde(i, r, voxelScalars, coefficient_summation, neighborCount);
 	}
 
-	std::cout << X_GRID_SIZE << " " << Y_GRID_SIZE << " " << Z_GRID_SIZE << std::endl;
+	std::cout << "The splatting kde is done!" << std::endl;
 
-	voxelScalars.resize(totalVoxelSize);
-
-	// calculate the scalar values on the grid
-	for(int k=0; k<Z_GRID_RESOLUTION; ++k)
-	{
 #pragma omp parallel for schedule(static) num_threads(8)
-		for(int j=0; j<Y_GRID_RESOLUTION; ++j)
-		{
-			for(int i=0; i<X_GRID_RESOLUTION; ++i)
-			{
-				double value_summation = 0.0, coefficient_summation = 0.0;
-
-				// Eigen::Vector3d object for calculating the Euclidean norm
-				Eigen::Vector3d gridPoint = Eigen::Vector3d(range[0].inf+X_GRID_STEP*i, range[1].inf+Y_GRID_STEP*j,
-						range[2].inf+Z_GRID_STEP*k);
-
-				// find the current bin of this point
-				int x = (gridPoint(0)-range[0].inf)/X_STEP;
-				int y = (gridPoint(1)-range[1].inf)/Y_STEP;
-				int z = (gridPoint(2)-range[2].inf)/Z_STEP;
-
-				// calculate the Gaussian interpolated scalars on the grid point
-				voxelScalars[k*xy_multiplication+j*X_GRID_RESOLUTION+i] = getInterpolatedScalar(x, y, z, X_GRID_SIZE,
-						Y_GRID_SIZE, Z_GRID_SIZE, r, gridPoint);
-			}
-		}
-	}
-}
-
-
-// calculate the Gaussian interpolated scalars on the grid point
-const double LocalScalar::getInterpolatedScalar(const int& x, const int& y, const int& z, const int& X_SIZE,
-		const int& Y_SIZE, const int& Z_SIZE, const double& r, const Eigen::Vector3d& gridPoint)
-{
-	// initialize preliminary variables
-	double summation = 0.0, coefficient, coefficient_summation = 0.0;
-	const int& xy_multiplication = X_RESOLUTION*Y_RESOLUTION;
-
-	double one_divided_by_r_squared;
-
-	// assign temporary cache memory
-	std::vector<streamPoint> localBin;
-
-	// Eigen::Vector3d object for calculating the Euclidean norm
-	Eigen::Vector3d diff;
-	int count = 0;
-
-	for(int k=std::max(0,z-Z_SIZE); k<=std::min(Z_RESOLUTION-1,z+Z_SIZE); ++k)
+	for(int i=0; i<totalVoxelSize; ++i)
 	{
-		for(int j=std::max(0,y-Y_SIZE); j<=std::min(Y_RESOLUTION-1,y+Y_SIZE); ++j)
+		// directly call the KDE normalization, then assign to Gaussian integrals
+		if(!useManualNormalization)
 		{
-			for(int i=std::max(0,x-X_SIZE); i<=std::min(X_RESOLUTION-1,x+X_SIZE); ++i)
+			double denominator;
+			if(!is3D)	// 2D case
+				denominator = std::pow(sqrt(2.0*M_PI),2.0)*neighborCount[i];
+			else
+				denominator = std::pow(sqrt(2.0*M_PI),3.0)*neighborCount[i];
+			voxelScalars[i] /= denominator;
+		}
+		else	// call the manual normalization for the KDE interpolation
+		{
+			if(neighborCount[i]>0)
 			{
-				localBin = spatialBins[k*xy_multiplication+j*X_RESOLUTION+i];
-				for(auto &v:localBin)
-				{
-					diff = gridPoint-vertexVec[v.vertexID];
-
-					if(useSuperpoint)
-					{
-						if(diff.norm()>4.0/bandwidth[v.vertexID])	// already exceed 4.0r^2, will be ignored
-							continue;
-
-						one_divided_by_r_squared = 1.0/2.0*bandwidth[v.vertexID]*bandwidth[v.vertexID];
-
-						if(useManualNormalization)	// use enforced normalization
-						{
-							coefficient = exp(-diff.transpose().dot(diff)*one_divided_by_r_squared);
-							coefficient_summation += coefficient;
-						}
-						else	// no manual normalization required, just use regular KDE
-						{
-							if(is3D)	// 3D data set
-								coefficient = bandwidth[v.vertexID]*bandwidth[v.vertexID]*bandwidth[v.vertexID]*
-											  exp(-diff.transpose().dot(diff)*one_divided_by_r_squared);
-							else	// 2D data set
-								coefficient = bandwidth[v.vertexID]*bandwidth[v.vertexID]*
-											  exp(-diff.transpose().dot(diff)*one_divided_by_r_squared);
-						}
-					}
-					else	// not use the superpoint generation but instead use a user-selective bandwidth
-					{
-						if(diff.norm()>4.0*r*r)	// >4*sigma^2 will be ignored
-							continue;
-
-						one_divided_by_r_squared = 1.0/2.0/r/r;
-						coefficient = exp(-diff.transpose().dot(diff)*one_divided_by_r_squared);
-					}
-
-					summation += coefficient*segmentScalars[v.vertexID];
-					++count;
-				}
+				voxelScalars[i] /= coefficient_summation[i];
 			}
 		}
 	}
 
-	if(count==0)	// the null point without enough neighbors
-	{
-		return 0.0;
-	}
-
-	if(!useManualNormalization)		// directly call the KDE normalization, then assign to Gaussian integrals
-	{
-		if(!is3D)	// 2D case
-			coefficient_summation = std::pow(sqrt(2.0*M_PI),2.0)*count;
-		else
-			coefficient_summation = std::pow(sqrt(2.0*M_PI),3.0)*count;
-	}
-
-	return summation/coefficient_summation;
 }
 
 
 // calculate the bandwidth with superpoint generation algorithm or not based on user selection of whether to
 // invoke the manual input selection
-const double LocalScalar::get_kde_bandwidth(double& maxBandwidth)
+const double LocalScalar::get_kde_bandwidth()
 {
 	double r = 0.0;
 
@@ -1705,12 +1610,12 @@ const double LocalScalar::get_kde_bandwidth(double& maxBandwidth)
 		int numOfClusters;
 
 		if(!is3D)
-			numOfClusters = std::sqrt(X_GRID_RESOLUTION*Y_GRID_RESOLUTION)/8;
+			numOfClusters = X_GRID_RESOLUTION*Y_GRID_RESOLUTION/16/16;
 		else
-			numOfClusters = std::pow(X_GRID_RESOLUTION*Y_GRID_RESOLUTION*Z_GRID_RESOLUTION, 1.0/3.0)/8;
+			numOfClusters = X_GRID_RESOLUTION*Y_GRID_RESOLUTION*Z_GRID_RESOLUTION/16/16/16;
 
 		std::cout << "The number of superpoint is " << numOfClusters << std::endl;
-		sg.get_superpoint_bandwidth(vertexVec, numOfClusters, bandwidth, maxBandwidth);
+		sg.get_superpoint_bandwidth(vertexVec, numOfClusters, bandwidth);
 	}
 	else
 	{
@@ -1726,3 +1631,64 @@ const double LocalScalar::get_kde_bandwidth(double& maxBandwidth)
 	return r;
 }
 
+
+// calculate the splatting effect from the KDE function
+void LocalScalar::splat_kde(const int& index, const double& kernel_radius, std::vector<double>& voxelScalars,
+		std::vector<double>& coefficient_summation, std::vector<int>& neighborCount)
+{
+	const Eigen::Vector3d& current_pos = vertexVec[index];
+
+	// find the existing index of the point in the grid points
+	const int& x = (current_pos(0)-range[0].inf)/X_GRID_STEP;
+	const int& y = (current_pos(1)-range[1].inf)/Y_GRID_STEP;
+	const int& z = (current_pos(2)-range[2].inf)/Z_GRID_STEP;
+	const int& xy_multiplication = X_GRID_RESOLUTION*Y_GRID_RESOLUTION;
+
+	// get the bandwidth for this point
+	double current_bandwdith, diff, coefficient;
+	if(!useSuperpoint)
+		current_bandwdith = kernel_radius;
+	else
+		current_bandwdith = 1.0/bandwidth[index];
+
+	// find the neighboring voxel size
+	const int& X_SIZE = 4*current_bandwdith/X_GRID_STEP;
+	const int& Y_SIZE = 4*current_bandwdith/Y_GRID_STEP;
+	const int& Z_SIZE = 4*current_bandwdith/Z_GRID_STEP;
+
+	// the neighboring index
+	int neighbor_index;
+
+	for(int k=std::max(0,z-Z_SIZE); k<=std::min(Z_GRID_RESOLUTION-1,z+Z_SIZE); ++k)
+	{
+		for(int j=std::max(0,y-Y_SIZE); j<=std::min(Y_GRID_RESOLUTION-1,y+Y_SIZE); ++j)
+		{
+			for(int i=std::max(0,x-X_SIZE); i<=std::min(X_GRID_RESOLUTION-1,x+X_SIZE); ++i)
+			{
+				neighbor_index = xy_multiplication*k+X_GRID_RESOLUTION*j+i;
+				diff = (current_pos-Eigen::Vector3d(range[0].inf+i*X_GRID_STEP, range[1].inf+j*Y_GRID_STEP,
+						range[2].inf+k*Z_GRID_STEP)).norm();
+
+				if(diff<=4.0*current_bandwdith)
+				{
+					if(useManualNormalization)	// use enforced normalization
+					{
+						coefficient = exp(-diff*diff/2.0/current_bandwdith/current_bandwdith);
+					}
+					else	// no manual normalization required, just use regular KDE
+					{
+						if(is3D)	// 3D data set
+							coefficient = bandwidth[index]*bandwidth[index]*bandwidth[index]
+							*exp(-diff*diff/2.0/current_bandwdith/current_bandwdith);
+						else	// 2D data set
+							coefficient = bandwidth[index]*bandwidth[index]*
+							exp(-diff*diff/2.0/current_bandwdith/current_bandwdith);
+					}
+					coefficient_summation[neighbor_index] += coefficient;
+					voxelScalars[neighbor_index] += coefficient*segmentScalars[index];
+					++neighborCount[neighbor_index];
+				}
+			}
+		}
+	}
+}

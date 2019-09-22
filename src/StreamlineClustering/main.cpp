@@ -7,7 +7,6 @@
 
 #include "AHC.h"
 #include "ReadData.h"
-#include "Visualization.h"
 #include "SimilarityDistance.h"
 #include "SpectralClustering.h"
 
@@ -81,7 +80,6 @@ void getDistanceMatrix(const std::vector<Eigen::VectorXd>& streamlines, const in
 					if(i==j)
 						continue;
 					distanceMatrix(i,j)=SimilarityDistance::getMcpDistance(streamlines[i],streamlines[j]);
-					assert(isinf(distanceMatrix(i,j)));
 				}
 			}
 		}
@@ -97,7 +95,6 @@ void getDistanceMatrix(const std::vector<Eigen::VectorXd>& streamlines, const in
 					if(i==j)
 						continue;
 					distanceMatrix(i,j)=SimilarityDistance::getHausdorffDistance(streamlines[i],streamlines[j]);
-					assert(isinf(distanceMatrix(i,j)));
 				}
 			}
 		}
@@ -107,9 +104,6 @@ void getDistanceMatrix(const std::vector<Eigen::VectorXd>& streamlines, const in
 		std::cout << "error!" << std::endl;
 		exit(1);
 	}
-
-	std::cout << distanceMatrix(199,139) << " " << distanceMatrix(139,199) << std::endl;
-	std::cout << distanceMatrix(199,107) << " " << distanceMatrix(107,199) << std::endl;
 }
 
 

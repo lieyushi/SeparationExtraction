@@ -19,23 +19,10 @@ endif()
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp -O3")
 
-find_package(VTK REQUIRED)
-include(${VTK_USE_FILE})
-
-if(${VTK_VERSION} VERSION_GREATER "6" AND VTK_QT_VERSION VERSION_GREATER "4")
-	# Instruct CMake to run moc automatically when needed.
-	set(CMAKE_AUTOMOC ON)
-	find_package(Qt5Widgets REQUIRED QUIET)
-else()
-	find_package(Qt4 REQUIRED)
-	include(${QT_USE_FILE})
-endif()
-
 include_directories(
     /usr/include/
     /usr/include/eigen3
     /usr/local/include/
-    /usr/local/include/vtk-8.1/
 	./src
     .
 )

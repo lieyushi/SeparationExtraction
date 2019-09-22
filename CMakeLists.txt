@@ -12,21 +12,17 @@ if(COMPILER_SUPPORTS_CXX11)
 elseif(COMPILER_SUPPORTS_CXX0X)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++0x")
 else()
-        message(STATUS "The compiler ${CMAKE_CXX_COMPILER} has no C++11 support. Please use a different C++ compiler.")
+    message(STATUS "The compiler ${CMAKE_CXX_COMPILER} has no C++11 support. Please use a different C++ compiler.")
 endif()
 
 # add "-O2" for library eigen optimization for matrix computation.
 # "-O2" is C++ optimization flags (bigO 2)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp -O3")
 
-# find_package(VTK REQUIRED)
-# include(${VTK_USE_FILE})
-
 include_directories(
     /usr/include/
     /usr/include/eigen3
     /usr/local/include/
-    /usr/local/include/vtk-8.1/
     src/Common/
 	./src
     .
@@ -44,8 +40,6 @@ add_definitions(
 #	-D_CRT_SECURE_NO_WARNINGS
 )
 
-find_package(VTK REQUIRED)
-include(${VTK_USE_FILE})
 
 ###############################################
 # generate separationExtraction executable
@@ -54,11 +48,8 @@ set(
    )
 file( GLOB SEPARATION_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/SeparationExtraction/*.cpp)  
 add_executable(separationExtraction ${SEPARATION_SRC})
-if(VTK_LIBRARIES)
-	target_link_libraries(separationExtraction ${VTK_LIBRARIES} ${ALL_LIBS})
-else()
-	target_link_libraries(separationExtraction vtkHybrid vtkWidgets ${ALL_LIBS})
-endif()
+target_link_libraries(separationExtraction ${ALL_LIBS})
+
 ###############################################
 
 ###############################################
@@ -68,11 +59,7 @@ set(
    )
 file( GLOB CLUSTERING_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/StreamlineClustering/*.cpp)  
 add_executable(streamlineClustering ${CLUSTERING_SRC})
-if(VTK_LIBRARIES)
-	target_link_libraries(streamlineClustering ${VTK_LIBRARIES} ${ALL_LIBS})
-else()
-	target_link_libraries(streamlineClustering vtkHybrid vtkWidgets ${ALL_LIBS})
-endif()
+target_link_libraries(streamlineClustering ${ALL_LIBS})
 ###############################################
 
 ###############################################
@@ -82,11 +69,8 @@ set(
    )
 file( GLOB LOCAL_SCALAR_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/LocalScalar/*.cpp)  
 add_executable(localScalar ${LOCAL_SCALAR_SRC})
-if(VTK_LIBRARIES)
-	target_link_libraries(localScalar ${VTK_LIBRARIES} ${ALL_LIBS})
-else()
-	target_link_libraries(localScalar vtkHybrid vtkWidgets ${ALL_LIBS})
-endif()
+
+target_link_libraries(localScalar ${ALL_LIBS})
 ###############################################
 
 ###############################################
@@ -96,11 +80,8 @@ set(
    )
 file( GLOB LOCAL_SCALAR_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/ParallelVector/*.cpp)  
 add_executable(pvOperator ${LOCAL_SCALAR_SRC})
-if(VTK_LIBRARIES)
-	target_link_libraries(pvOperator ${VTK_LIBRARIES} ${ALL_LIBS})
-else()
-	target_link_libraries(pvOperator vtkHybrid vtkWidgets ${ALL_LIBS})
-endif()
+
+target_link_libraries(pvOperator ${ALL_LIBS})
 ###############################################
 
 ###############################################
@@ -110,9 +91,6 @@ set(
    )
 file( GLOB LOCAL_SCALAR_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/StreamlineGenerator/*.cpp)  
 add_executable(streamlineGenerator ${LOCAL_SCALAR_SRC})
-if(VTK_LIBRARIES)
-	target_link_libraries(streamlineGenerator ${VTK_LIBRARIES} ${ALL_LIBS})
-else()
-	target_link_libraries(streamlineGenerator vtkHybrid vtkWidgets ${ALL_LIBS})
-endif()
+
+target_link_libraries(streamlineGenerator ${ALL_LIBS})
 ###############################################

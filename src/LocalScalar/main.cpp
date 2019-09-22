@@ -8,11 +8,12 @@
 #include "LocalScalar.h"
 #include "ReadData.h"
 
+
 int main(int argc, char* argv[])
 {
 	if(argc!=2)
 	{
-		std::cout << "Error for argument input! Sould be ./execute fileName..." << std::endl;
+		std::cout << "Error for argument input! Sould be ./execute argument_file..." << std::endl;
 		exit(1);
 	}
 
@@ -28,5 +29,3 @@ int main(int argc, char* argv[])
 
 	return 0;
 }
-
-

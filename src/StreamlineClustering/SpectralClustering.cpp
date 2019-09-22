@@ -380,7 +380,7 @@ void SpectralClustering::getEigvecRotation(const Eigen::MatrixXd& X)
 			mMaxQuality = e->getQuality();
 		}
 
-		if(isnan(e->getQuality())||isinf(e->getQuality()))
+		if(std::isnan(e->getQuality())||std::isinf(e->getQuality()))
 		{
 			std::cout << "Meet with nan or inf! Stop! " << std::endl;
 			return;

@@ -49,7 +49,7 @@ public:
 	 * use k-means clustering to cluster the spatial points into several clusters
 	 */
 	void get_superpoint_bandwidth(const std::vector<Eigen::Vector3d>& coordinates, int& numOfClusters,
-			std::vector<double>& bandwidth, double& maxBandwidth, bool use_kmeans_plus_plus = false);
+			std::vector<double>& bandwidth, bool use_kmeans_plus_plus = false);
 
 private:
 
@@ -67,7 +67,7 @@ private:
 
 	// calculate the bandwidth from clustering result
 	void calculate_bandwidth(const std::vector<Eigen::Vector3d>& coordinates, int& numOfClusters,
-			std::vector<Eigen::Vector3d>& centroids, std::vector<double>& bandwidth, double& maxBandwidth);
+			std::vector<Eigen::Vector3d>& centroids, std::vector<double>& bandwidth);
 
 };
 

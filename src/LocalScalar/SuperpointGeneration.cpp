@@ -21,10 +21,8 @@ SuperpointGeneration::~SuperpointGeneration() {
  * use k-means clustering to cluster the spatial points into several clusters
  */
 void SuperpointGeneration::get_superpoint_bandwidth(const std::vector<Eigen::Vector3d>& coordinates, int& numOfClusters,
-		std::vector<double>& bandwidth, double& maxBandwidth, bool use_kmeans_plus_plus)
+		std::vector<double>& bandwidth, bool use_kmeans_plus_plus)
 {
-	std::cout << use_kmeans_plus_plus << std::endl;
-
 	// initial samples for k-means clustering
 	std::vector<Eigen::Vector3d> centroids;
 
@@ -35,7 +33,7 @@ void SuperpointGeneration::get_superpoint_bandwidth(const std::vector<Eigen::Vec
 
 	perform_kmeans(coordinates, numOfClusters, centroids);
 
-	calculate_bandwidth(coordinates, numOfClusters, centroids, bandwidth, maxBandwidth);
+	calculate_bandwidth(coordinates, numOfClusters, centroids, bandwidth);
 }
 
 
@@ -237,14 +235,13 @@ void SuperpointGeneration::perform_kmeans(const std::vector<Eigen::Vector3d>& co
 
 // calculate the bandwidth from clustering result
 void SuperpointGeneration::calculate_bandwidth(const std::vector<Eigen::Vector3d>& coordinates, int& numOfClusters,
-		std::vector<Eigen::Vector3d>& centroids, std::vector<double>& bandwidth, double& maxBandwidth)
+		std::vector<Eigen::Vector3d>& centroids, std::vector<double>& bandwidth)
 {
 	const int& numOfVertices = coordinates.size();
 	bandwidth.resize(numOfVertices);
 
-	maxBandwidth = 0.0;
-
 	// assign the same 1.0/bandwidth to the candidates inside the same cluster
+#pragma omp parallel for schedule(static) num_threads(8)
 	for(int i=0; i<numOfClusters; ++i)
 	{
 		long double summation = 0.0;
@@ -259,14 +256,9 @@ void SuperpointGeneration::calculate_bandwidth(const std::vector<Eigen::Vector3d
 		}
 		double bwidth = double(each.size())/summation;
 
-		// get the max band width
-		maxBandwidth = std::max(maxBandwidth, 1.0/bwidth);
-
 		for(int j=0; j<each.size(); ++j)
 		{
 			bandwidth[each[j]] = bwidth;	// it's actually storing the 1.0/h
 		}
 	}
-
-	std::cout << "The max band width is " << maxBandwidth << std::endl;
 }

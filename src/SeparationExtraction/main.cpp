@@ -6,7 +6,6 @@
  */
 #include "ReadData.h"
 #include "SeparationExtraction.h"
-#include "Visualization.h"
 
 void extractForPlyFile(const int& argc, char* argv[], VectorField& vf);
 
@@ -50,9 +49,6 @@ int main(int argc, char* argv[])
 	}
 
 	performExtraction(vf, se);
-
-	Visualization vtkRender;
-	vtkRender.renderStreamlines(vf.streamlineVector, se.separationVector);
 
 	return 0;
 }
