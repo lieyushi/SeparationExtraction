@@ -545,7 +545,8 @@ void LocalScalar::recordTime(const std::vector<string>& events, std::vector<doub
 		exit(1);
 	}
 	readme << "--------------------------------------------------------------------------------------" << std::endl;
-	readme << "For " << _data_set << ":" << std::endl;
+	readme << "For " << _data_set << " [" << X_GRID_RESOLUTION << "x" << Y_GRID_RESOLUTION << "x" 
+		   << Z_GRID_RESOLUTION << "]:" << std::endl;
 
 	for(int i=0; i<events.size(); ++i)
 		readme << "The time for " << events[i] << " takes " << timeSpent[i] << " seconds." << std::endl;
@@ -656,11 +657,10 @@ void LocalScalar::searchKNNPointByBining(const bool& sameLineEnabled, const int&
 }
 
 
-// search through two directions
+// search through two directions (just left and right) for 2D data set
 void LocalScalar::searchClosestThroughDirections(const bool& sameLineEnabled, const int& j,
 		const std::vector<int>& vertexArray, std::vector<int>& pointCandidate)
 {
-	int current;
 	int targetID = vertexArray[j];
 	int centerX = (vertexVec[targetID](0)-range[0].inf)/X_STEP;
 	int centerY = (vertexVec[targetID](1)-range[1].inf)/Y_STEP;
@@ -684,76 +684,52 @@ void LocalScalar::searchClosestThroughDirections(const bool& sameLineEnabled, co
 
 	double searchingStep = std::min(X_STEP, Y_STEP)*0.1;
 
+	// closest threshold
+	searchThreshold=3.0*searchingStep;
+
 	Eigen::Vector3d currentPos = center;
 	int currentBin, streamID;
 
-	const double& THRESHOLD = 0.7074;
-	double dotProduct;
-
-	bool found = false;
-	std::unordered_map<int, bool> binChosen;
 	while(1)
 	{
-		currentPos += searchingStep*searchDirection;
+		currentPos += 2.0*searchingStep*searchDirection;
 
 		int x = (currentPos(0)-range[0].inf)/X_STEP;
 		int y = (currentPos(1)-range[1].inf)/Y_STEP;
 		int z = (currentPos(2)-range[2].inf)/Z_STEP;
+
+		// already exit from the domain
 		if(x<0 || x>=X_RESOLUTION || y<0 || y>=Y_RESOLUTION || z<0 || z>=Z_RESOLUTION)
 			break;
 
 		currentBin = xy_multiplication*z+X_RESOLUTION*y+x;
-		if(binChosen.find(currentBin)==binChosen.end())
+
+		std::vector<streamPoint>& bins = spatialBins[currentBin];
+		std::vector<MinimalDist> pointIDArray;
+
+		// find the points that are not the same vertex and not on the same streamline
+		for(int k=0; k<bins.size(); ++k)
 		{
-			std::vector<streamPoint>& bins = spatialBins[currentBin];
-			std::vector<MinimalDist> pointIDArray;
-			for(int k=0; k<bins.size(); ++k)
-			{
-				streamID = bins[k].vertexID;
-				if(streamID==targetID)	// same vertex
-					continue;
-				if(vertexToLine[streamID]==vertexToLine[targetID])	// on same streamlines
-					continue;
-				Eigen::Vector3d zDirection = tangential.cross(vertexVec[streamID]-center);
-				if(zDirection(2)<0)
-					continue;
-				pointIDArray.push_back(MinimalDist((currentPos-vertexVec[streamID]).norm(), streamID));
-			}
-			// sort distance from minimal to maximal
-			std::sort(pointIDArray.begin(), pointIDArray.end(), CompareDistRecord());
-
-			for(int k=0; k<pointIDArray.size(); ++k)
-			{
-				int streamID = pointIDArray[k].index;
-
-				// should be parallel as much as possible
-				Eigen::Vector3d segmentCandidate;
-				const std::vector<int>& vertexListOfLine = streamlineToVertex[vertexToLine[streamID]];
-				const int& streamlineSelected = vertexListOfLine.size();
-				if(streamID==vertexListOfLine[0])
-					segmentCandidate = vertexVec[vertexListOfLine[1]]-vertexVec[vertexListOfLine[0]];
-				else if(streamID==vertexListOfLine[streamlineSelected-1])
-					segmentCandidate = vertexVec[streamID]-vertexVec[streamID-1];
-				else
-					segmentCandidate = vertexVec[streamID+1]-vertexVec[streamID-1];
-				// normalize the tangential direction
-				segmentCandidate/=segmentCandidate.norm();
-				dotProduct = segmentCandidate.dot(tangential);
-				dotProduct = std::min(dotProduct, 1.0);
-				dotProduct = std::max(dotProduct, -1.0);
-
-				if(abs(dotProduct)>=THRESHOLD)
-				{
-					found = true;
-					pointCandidate.push_back(streamID);
-					break;
-				}
-			}
-			binChosen[currentBin] = true;
+			streamID = bins[k].vertexID;
+			if(streamID==targetID)	// same vertex
+				continue;
+			if(vertexToLine[streamID]==vertexToLine[targetID])	// on same streamlines
+				continue;
+			Eigen::Vector3d zDirection = tangential.cross(vertexVec[streamID]-center);
+			if(zDirection(2)<0)	// search along left directions
+				continue;
+			pointIDArray.push_back(MinimalDist((currentPos-vertexVec[streamID]).norm(), streamID));
 		}
+		// sort distance from minimal to maximal
+		std::sort(pointIDArray.begin(), pointIDArray.end(), CompareDistRecord());
 
-		if(found)
-			break;
+		// don't handle if no points are nearly enough
+		if(!pointIDArray.empty() && pointIDArray[0].dist>searchThreshold)
+			continue;
+
+		// otherwise, the first vertex should be close enough for the direction
+		pointCandidate.push_back(pointIDArray[0].index);
+		break;
 	}
 
 	/*
@@ -761,8 +737,6 @@ void LocalScalar::searchClosestThroughDirections(const bool& sameLineEnabled, co
 	 */
 	searchDirection = -searchDirection;
 	currentPos = center;
-	found = false;
-	binChosen.clear();
 	while(1)
 	{
 		currentPos += searchingStep*searchDirection;
@@ -775,57 +749,31 @@ void LocalScalar::searchClosestThroughDirections(const bool& sameLineEnabled, co
 			break;
 
 		currentBin = xy_multiplication*z+X_RESOLUTION*y+x;
-		if(binChosen.find(currentBin)==binChosen.end())
+
+		std::vector<streamPoint>& bins = spatialBins[currentBin];
+		std::vector<MinimalDist> pointIDArray;
+		for(int k=0; k<bins.size(); ++k)
 		{
-			std::vector<streamPoint>& bins = spatialBins[currentBin];
-			std::vector<MinimalDist> pointIDArray;
-			for(int k=0; k<bins.size(); ++k)
-			{
-				streamID = bins[k].vertexID;
-				if(streamID==targetID)	// same vertex
-					continue;
-				if(vertexToLine[streamID]==vertexToLine[targetID])	// on same streamlines
-					continue;
-				Eigen::Vector3d zDirection = tangential.cross(vertexVec[streamID]-center);
-				if(zDirection(2)>0)
-					continue;
-				pointIDArray.push_back(MinimalDist((currentPos-vertexVec[streamID]).norm(), streamID));
-			}
-			// sort distance from minimal to maximal
-			std::sort(pointIDArray.begin(), pointIDArray.end(), CompareDistRecord());
-
-			for(int k=0; k<pointIDArray.size(); ++k)
-			{
-				int streamID = pointIDArray[k].index;
-
-				// should be parallel as much as possible
-				Eigen::Vector3d segmentCandidate;
-				const std::vector<int>& vertexListOfLine = streamlineToVertex[vertexToLine[streamID]];
-				const int& streamlineSelected = vertexListOfLine.size();
-				if(streamID==vertexListOfLine[0])
-					segmentCandidate = vertexVec[vertexListOfLine[0]+1]-vertexVec[vertexListOfLine[0]];
-				else if(streamID==vertexListOfLine[streamlineSelected-1])
-					segmentCandidate = vertexVec[streamID]-vertexVec[streamID-1];
-				else
-					segmentCandidate = vertexVec[streamID+1]-vertexVec[streamID-1];
-
-				segmentCandidate/=segmentCandidate.norm();
-				dotProduct = segmentCandidate.dot(tangential);
-				dotProduct = std::min(dotProduct, 1.0);
-				dotProduct = std::max(dotProduct, -1.0);
-
-				if(abs(dotProduct)>=THRESHOLD)
-				{
-					found = true;
-					pointCandidate.push_back(streamID);
-					break;
-				}
-			}
-			binChosen[currentBin] = true;
+			streamID = bins[k].vertexID;
+			if(streamID==targetID)	// same vertex
+				continue;
+			if(vertexToLine[streamID]==vertexToLine[targetID])	// on same streamlines
+				continue;
+			Eigen::Vector3d zDirection = tangential.cross(vertexVec[streamID]-center);
+			if(zDirection(2)>0)
+				continue;
+			pointIDArray.push_back(MinimalDist((currentPos-vertexVec[streamID]).norm(), streamID));
 		}
+		// sort distance from minimal to maximal
+		std::sort(pointIDArray.begin(), pointIDArray.end(), CompareDistRecord());
 
-		if(found)
-			break;
+		// don't handle if no points are nearly enough
+		if(!pointIDArray.empty() && pointIDArray[0].dist>searchThreshold)
+			continue;
+
+		// since it's already sorted, then should push inside the first candidate
+		pointCandidate.push_back(pointIDArray[0].index);
+		break;
 	}
 }
 
@@ -1068,7 +1016,7 @@ void LocalScalar::searchNeighborThroughSeparateDirections(const bool& sameLineEn
 	double searchingStep = searchThreshold*0.1;
 
 	// closest threshold
-	searchThreshold*=0.15;
+	searchThreshold*=0.3;
 
 	// find the perpendicular plane w.r.t. the tangent direction
 	int targetID = vertexArray[j];
@@ -1098,14 +1046,24 @@ void LocalScalar::searchNeighborThroughSeparateDirections(const bool& sameLineEn
 	Eigen::Vector3d current;
 	int currentBin, streamID;
 
+	// the limitation of max search step
+	const int& maxStep = 50;
+
 	std::unordered_map<int,int> streamlineChosen;
 
 	for(int i=0; i<directionVectors.size(); ++i)
 	{
 		current = center;
 		std::vector<MinimalDist> pointIDArray;
+
+		// how many steps already taken
+		int count = 0;
 		while(1)
 		{
+			// this is to avoid searching neigbhorhood that is too far away from you
+			if(count>=maxStep)
+				break;
+
 			current += 2.0*searchingStep*directionVectors[i];
 
 			int x = (current(0)-range[0].inf)/X_STEP;
@@ -1145,6 +1103,7 @@ void LocalScalar::searchNeighborThroughSeparateDirections(const bool& sameLineEn
 					}
 				}
 			}
+			++count;
 		}
 	}
 }
@@ -1406,12 +1365,18 @@ void LocalScalar::performKDE_smoothing(const double& r, const int& TotalSize)
 			// calculating the averaged values of the 7 neighboring points
 			const int& HALF = TotalSize/2;
 
-			double one_divided_by_r_r;
+			double one_divided_by_r_r, one_divided_by_r;
 			// get the 2.0*r*r
 			if(useSuperpoint)
+			{
+				one_divided_by_r = 1.0/bandwidth[j];
 				one_divided_by_r_r = 1.0/2.0*bandwidth[j]*bandwidth[j];
+			}
 			else
+			{
+				one_divided_by_r = 1.0/r;
 				one_divided_by_r_r = 1.0/(2.0*r*r);
+			}
 
 			if(j<=HALF)
 			{
@@ -1431,10 +1396,10 @@ void LocalScalar::performKDE_smoothing(const double& r, const int& TotalSize)
 						else
 						{
 							if(is3D)	// 3D use cubic
-								coefficient = bandwidth[j]*bandwidth[j]*bandwidth[j]
+								coefficient = one_divided_by_r*one_divided_by_r*one_divided_by_r
 										  *exp(-difference.transpose().dot(difference)*one_divided_by_r_r);
 							else	// 2D use quadratic
-								coefficient = bandwidth[j]*bandwidth[j]*
+								coefficient = one_divided_by_r*one_divided_by_r*
 								exp(-difference.transpose().dot(difference)*one_divided_by_r_r);
 						}
 						summation += coefficient*segmentScalars[vertexArray[k]];
@@ -1544,6 +1509,8 @@ void LocalScalar::sampleOnVoxels(const double& r, std::vector<double>& voxelScal
 #pragma omp parallel for schedule(static) num_threads(8)
 	for(int i=0; i<totalVoxelSize; ++i)
 	{
+		if(neighborCount[i]==0)
+			continue;
 		// directly call the KDE normalization, then assign to Gaussian integrals
 		if(!useManualNormalization)
 		{
@@ -1562,7 +1529,6 @@ void LocalScalar::sampleOnVoxels(const double& r, std::vector<double>& voxelScal
 			}
 		}
 	}
-
 }
 
 
@@ -1645,11 +1611,13 @@ void LocalScalar::splat_kde(const int& index, const double& kernel_radius, std::
 	const int& xy_multiplication = X_GRID_RESOLUTION*Y_GRID_RESOLUTION;
 
 	// get the bandwidth for this point
-	double current_bandwdith, diff, coefficient;
+	double current_bandwdith, diff, coefficient, reciprocal_bandwidth;
 	if(!useSuperpoint)
 		current_bandwdith = kernel_radius;
 	else
 		current_bandwdith = 1.0/bandwidth[index];
+
+	reciprocal_bandwidth = 1.0/current_bandwdith;
 
 	// find the neighboring voxel size
 	const int& X_SIZE = 4*current_bandwdith/X_GRID_STEP;
@@ -1674,17 +1642,17 @@ void LocalScalar::splat_kde(const int& index, const double& kernel_radius, std::
 					if(useManualNormalization)	// use enforced normalization
 					{
 						coefficient = exp(-diff*diff/2.0/current_bandwdith/current_bandwdith);
+						coefficient_summation[neighbor_index] += coefficient;
 					}
 					else	// no manual normalization required, just use regular KDE
 					{
 						if(is3D)	// 3D data set
-							coefficient = bandwidth[index]*bandwidth[index]*bandwidth[index]
+							coefficient = reciprocal_bandwidth*reciprocal_bandwidth*reciprocal_bandwidth
 							*exp(-diff*diff/2.0/current_bandwdith/current_bandwdith);
 						else	// 2D data set
-							coefficient = bandwidth[index]*bandwidth[index]*
-							exp(-diff*diff/2.0/current_bandwdith/current_bandwdith);
+							coefficient = reciprocal_bandwidth*reciprocal_bandwidth*
+							exp(-diff*diff/2.0/current_bandwdith/current_bandwdith);					
 					}
-					coefficient_summation[neighbor_index] += coefficient;
 					voxelScalars[neighbor_index] += coefficient*segmentScalars[index];
 					++neighborCount[neighbor_index];
 				}
