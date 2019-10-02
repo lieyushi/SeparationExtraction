@@ -23,12 +23,14 @@ int main(int argc, char* argv[])
 	VTKWritter::printVectorField(vf.dataset_name, vf.vertexVec, vf.limits, vf.X_RESOLUTION, vf.Y_RESOLUTION,
 			vf.Z_RESOLUTION, vf.X_STEP, vf.Y_STEP, vf.Z_STEP);
 
+	/*
 	ParallelVector pv(vf.dataset_name, vf.vertexVec, vf.limits, vf.X_RESOLUTION, vf.Y_RESOLUTION,
 						vf.Z_RESOLUTION, vf.X_STEP, vf.Y_STEP, vf.Z_STEP);
 
 	pv.performPVOperation();
 
 	VTKWritter::printPoints(vf.dataset_name, pv.pvPointVec);
+	*/
 
 	return 0;
 }

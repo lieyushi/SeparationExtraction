@@ -429,8 +429,8 @@ void LocalScalar::processAlignmentByPointWise()
 	// point-wise scalar value calculation on streamlines
 	segmentScalars.resize(streamlineVertexCount);
 
-	std::cout << "Choose neighborhood search strategy: 1.KNN, 2.left and right closest (2D only), "
-			"3.search along 8 directions on the plane (3D only), 4.search along directions of 9 voxels (3D only)."
+	std::cout << "Choose neighborhood search strategy: 1.left and right closest (2D only), 2. KNN, "
+			<< "3.search along 8 directions on the plane (3D only), 4.search along directions of 9 voxels (3D only)."
 			<< std::endl;
 	int directionOption;
 	std::cin >> directionOption;
@@ -724,7 +724,7 @@ void LocalScalar::searchClosestThroughDirections(const bool& sameLineEnabled, co
 		std::sort(pointIDArray.begin(), pointIDArray.end(), CompareDistRecord());
 
 		// don't handle if no points are nearly enough
-		if(!pointIDArray.empty() && pointIDArray[0].dist>searchThreshold)
+		if(pointIDArray.empty() || pointIDArray[0].dist>searchThreshold)
 			continue;
 
 		// otherwise, the first vertex should be close enough for the direction
@@ -768,7 +768,7 @@ void LocalScalar::searchClosestThroughDirections(const bool& sameLineEnabled, co
 		std::sort(pointIDArray.begin(), pointIDArray.end(), CompareDistRecord());
 
 		// don't handle if no points are nearly enough
-		if(!pointIDArray.empty() && pointIDArray[0].dist>searchThreshold)
+		if(pointIDArray.empty() || pointIDArray[0].dist>searchThreshold)
 			continue;
 
 		// since it's already sorted, then should push inside the first candidate
@@ -848,12 +848,12 @@ void LocalScalar::getScalarsFromNeighbors(const int& j, const std::vector<int>& 
 			mid_dist = (vertexVec[firstBegin+HALF]-vertexVec[candidate]).norm();
 		}
 
-		if(start_dist<1.0E-8)
+		if(mid_dist<1.0E-6)
 			continue;
 
-		ratio = std::max(end_dist/mid_dist, start_dist/mid_dist);
+		// ratio = std::max(end_dist/mid_dist, start_dist/mid_dist);
 		// ratio = end_dist/start_dist;
-		// ratio = end_dist*start_dist/mid_dist/mid_dist;
+		ratio = end_dist*start_dist/mid_dist/mid_dist;
 
 		// use the max of divergence and convergence rate, so only consider 0 < ratio < 1
 		if(useMaxRatio)
@@ -874,6 +874,12 @@ void LocalScalar::getScalarsFromNeighbors(const int& j, const std::vector<int>& 
 	}
 
 	summation/=effective;
+
+	if(std::isnan(summation))
+	{
+		std::cout << "Error for nan!" << std::endl;
+		exit(1);
+	}
 
 	ratio = abs(log2(summation));
 	scalar = ratio/(ratio+1);
@@ -1046,9 +1052,6 @@ void LocalScalar::searchNeighborThroughSeparateDirections(const bool& sameLineEn
 	Eigen::Vector3d current;
 	int currentBin, streamID;
 
-	// the limitation of max search step
-	const int& maxStep = 50;
-
 	std::unordered_map<int,int> streamlineChosen;
 
 	for(int i=0; i<directionVectors.size(); ++i)
@@ -1177,10 +1180,10 @@ void LocalScalar::findDirectionsToAngles(const Eigen::Vector3d& tangential, cons
 			+ b*b*cosVal*f - a*c*cosVal*d - b*c*cosVal*e)/(a*a*cosVal*cosVal - a*a*e*e + 2*a*b*d*e
 			+ b*b*cosVal*cosVal - b*b*d*d);
 
+	// get the direction search issues
 	if(a*e-b*d==0)
 	{
-		std::cout << "Error for denominator being zero!" << std::endl;
-		exit(1);
+		return;
 	}
 	solution(0) = -(b*cosVal - b*f*solution(2) + c*e*solution(2))/(a*e - b*d);
 	solution(1) = (a*cosVal - a*f*solution(2) + c*d*solution(2))/(a*e - b*d);
@@ -1575,11 +1578,29 @@ const double LocalScalar::get_kde_bandwidth()
 
 		int numOfClusters;
 
-		if(!is3D)
-			numOfClusters = X_GRID_RESOLUTION*Y_GRID_RESOLUTION/16/16;
-		else
-			numOfClusters = X_GRID_RESOLUTION*Y_GRID_RESOLUTION*Z_GRID_RESOLUTION/16/16/16;
+		// decide whether should use the automatic calculation from resolution or not
+		std::cout << "Input number of superpoint generation or decided by resolution or by point number? 1.resolution, 2.point: " << std::endl;
+		int clusterOption;
+		std::cin >> clusterOption;
+		assert(clusterOption==1 || clusterOption==2);
 
+		// automatically calculating from the image resolution
+		if(clusterOption==1)
+		{
+			if(!is3D)
+				numOfClusters = X_GRID_RESOLUTION*Y_GRID_RESOLUTION/16/16;
+			else
+				numOfClusters = X_GRID_RESOLUTION*Y_GRID_RESOLUTION*Z_GRID_RESOLUTION/16/16/16;
+		}
+		else	// enable user input just in case some number of clusters calculated are soo huge or sooo small
+		{
+			if(!is3D)
+				numOfClusters = vertexVec.size()/16/16;
+			else
+				numOfClusters = vertexVec.size()/16/16/16;
+			assert(numOfClusters>1 && numOfClusters<vertexVec.size());
+		}
+		
 		std::cout << "The number of superpoint is " << numOfClusters << std::endl;
 		sg.get_superpoint_bandwidth(vertexVec, numOfClusters, bandwidth);
 	}

@@ -530,6 +530,10 @@ void VectorField::traceStreamlinesBySeeds(const std::vector<Vertex>& seeds, cons
 				streamline_length += (nextPos-Eigen::Vector3d(back.x, back.y, back.z)).norm();
 			}
 
+			// just in case we place seeds in the critical points
+			if(velocity.norm() < MINIMAL_VELOCITY)
+				break;
+
 			forwardTracing.push_back(Vertex(nextPos, velocity));
 			forwardVelocity.push_back(velocity.norm());
 
@@ -578,6 +582,10 @@ void VectorField::traceStreamlinesBySeeds(const std::vector<Vertex>& seeds, cons
 				Vertex front = forwardTracing.at(0);
 				streamline_length += (nextPos-Eigen::Vector3d(front.x,front.y,front.z)).norm();
 			}
+
+			// just in case we place seeds in the critical points
+			if(velocity.norm() < MINIMAL_VELOCITY)
+				break;
 
 			backwardTracing.push_back(Vertex(nextPos, velocity));
 			backwardVelocity.push_back(velocity.norm());
@@ -1208,6 +1216,8 @@ void VectorField::filterShortStreamlines(const double& numRatio)
 	// start deleting those streamlines that has e.g., 20% smallest size of lengths
 	std::vector<Eigen::VectorXd> temp;
 	std::vector<std::vector<double> > norm_temp;
+	std::vector<double> length_temp;
+
 	for(int i=0; i<streamlineCount; ++i)
 	{
 		// not in the unordered_set<int>
@@ -1215,8 +1225,10 @@ void VectorField::filterShortStreamlines(const double& numRatio)
 		{
 			temp.push_back(streamlineVector[i]);
 			norm_temp.push_back(lineVelocity[i]);
+			length_temp.push_back(lineLength[i]);
 		}
 	}
 	streamlineVector = temp;
 	lineVelocity = norm_temp;
+	lineLength = length_temp;
 }

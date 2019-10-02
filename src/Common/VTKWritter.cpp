@@ -282,20 +282,6 @@ void VTKWritter::printVectorField(const string& fileName, const std::vector<Vert
 
     const int& SLICE_NUMBER = x_resolution*y_resolution;
 
-	fout << "SCALARS velocity_magnitude double 1" << endl;
-	fout << "LOOKUP_TABLE velo_table" << endl;
-
-	for (int i = 0; i < z_resolution; ++i)
-	{
-		for (int j = 0; j < y_resolution; ++j)
-		{
-			for (int k = 0; k < x_resolution; ++k)
-			{
-				fout << vertexVec[SLICE_NUMBER*i+x_resolution*j+k].v_magnitude << endl;
-			}
-		}
-	}
-
     fout << "VECTORS velocityDirection double" << endl;
     Vertex vertex;
     for (int i = 0; i < z_resolution; ++i)

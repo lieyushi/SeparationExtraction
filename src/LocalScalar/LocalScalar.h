@@ -146,6 +146,9 @@ private:
 	/* whether is 3D data set or not */
 	bool is3D = false;
 
+	/* the max search times for direction-based */
+	const int& maxStep = 50;
+
 	// point-wise scalar value calculation on streamlines
 	std::vector<double> segmentScalars;
 
