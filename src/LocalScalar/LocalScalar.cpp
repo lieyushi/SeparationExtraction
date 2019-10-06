@@ -25,6 +25,7 @@ LocalScalar::LocalScalar(std::vector<Eigen::VectorXd>& coordinates, const string
 	/* streamline to vertex mapping */
 	streamlineToVertex.resize(streamlineCount);
 
+	// read in the coordinate information and get the bounding box coordinates
 	int pointID = 0;
 	Eigen::VectorXd line;
 	int lineSize;
@@ -38,9 +39,18 @@ LocalScalar::LocalScalar(std::vector<Eigen::VectorXd>& coordinates, const string
 			vertexVec[pointID+j] = Eigen::Vector3d(line(3*j), line(3*j+1), line(3*j+2));
 			vertexToLine[pointID+j] = i;
 			vertexArray.push_back(pointID+j);
+
+			for(int k=0; k<3; ++k)
+			{
+				range[k].inf = std::min(range[k].inf, line(3*j+k));
+				range[k].sup = std::max(range[k].sup, line(3*j+k));
+			}
 		}
 		pointID+=lineSize;
 	}
+
+	if(range[2].sup-range[2].inf>1.0E-3)
+		is3D = true;
 }
 
 
@@ -203,24 +213,10 @@ void LocalScalar::processSegmentByCurvature()
 /* spatial bining for all the points in the grid */
 void LocalScalar::assignPointsToBins()
 {
-	/* get x y z coordinate limits */
 	Eigen::VectorXd line;
 	int lineSize;
-	for(int i=0; i<streamlineCount; ++i)
-	{
-		line = coordinates[i];
-		lineSize = line.size()/3;
-		for(int j=0; j<lineSize; ++j)
-		{
-			for(int k=0; k<3; ++k)
-			{
-				range[k].inf = std::min(range[k].inf, line(3*j+k));
-				range[k].sup = std::max(range[k].sup, line(3*j+k));
-			}
-		}
-	}
 
-	if(range[2].sup-range[2].inf<=1.0E-3)
+	if(!is3D)
 	{
 		float y_to_x = (range[1].sup-range[1].inf)/(range[0].sup-range[0].inf);
 		X_RESOLUTION = 101, Y_RESOLUTION = y_to_x*X_RESOLUTION, Z_RESOLUTION = 1;
@@ -230,7 +226,6 @@ void LocalScalar::assignPointsToBins()
 	}
 	else
 	{
-		is3D = true;
 		float y_to_x = (range[1].sup-range[1].inf)/(range[0].sup-range[0].inf);
 		float z_to_x = (range[2].sup-range[2].inf)/(range[0].sup-range[0].inf);
 		X_RESOLUTION = 101, Y_RESOLUTION = y_to_x*X_RESOLUTION, Z_RESOLUTION = z_to_x*X_RESOLUTION;
@@ -476,6 +471,21 @@ void LocalScalar::processAlignmentByPointWise()
 			else if(separationMeasureOption==2)
 				getScalarsFromDeviation(j, vertexArray, TOTALSIZE, closestPoint, segmentScalars[vertexArray[j]]);
 		}
+	}
+
+	bool isAllZero = false;
+	for(int i=0; i<segmentScalars.size(); ++i)
+	{
+		if(segmentScalars[i]>=1.0E-8)
+		{
+			isAllZero = true;
+			break;
+		}
+	}
+	if(!isAllZero)
+	{
+		std::cout << "All scalar value is zero!" << std::endl;
+		exit(1);
 	}
 
 	// record the events and time spent
@@ -851,9 +861,9 @@ void LocalScalar::getScalarsFromNeighbors(const int& j, const std::vector<int>& 
 		if(mid_dist<1.0E-6)
 			continue;
 
-		// ratio = std::max(end_dist/mid_dist, start_dist/mid_dist);
+		ratio = std::max(end_dist/mid_dist, start_dist/mid_dist);
 		// ratio = end_dist/start_dist;
-		ratio = end_dist*start_dist/mid_dist/mid_dist;
+		// ratio = end_dist*start_dist/mid_dist/mid_dist;
 
 		// use the max of divergence and convergence rate, so only consider 0 < ratio < 1
 		if(useMaxRatio)
@@ -1680,4 +1690,68 @@ void LocalScalar::splat_kde(const int& index, const double& kernel_radius, std::
 			}
 		}
 	}
+}
+
+
+/* get the density-based voxeling information */
+void LocalScalar::getDensityVolume()
+{
+	// get the voxel size by input, which should be identical to the KDE resolution
+	std::cout << "Choose the x resolution: " << std::endl;
+	std::cin >> X_GRID_RESOLUTION;
+	assert(X_GRID_RESOLUTION>0);
+
+	if(!is3D)
+	{
+		float y_to_x = (range[1].sup-range[1].inf)/(range[0].sup-range[0].inf);
+		Y_GRID_RESOLUTION = y_to_x*X_GRID_RESOLUTION+0.5, Z_GRID_RESOLUTION = 1;
+		X_GRID_STEP = (range[0].sup-range[0].inf)/float(X_GRID_RESOLUTION-1);
+		Y_GRID_STEP = (range[1].sup-range[1].inf)/float(Y_GRID_RESOLUTION-1);
+		Z_GRID_STEP = 1.0E5;
+	}
+	else
+	{
+		float y_to_x = (range[1].sup-range[1].inf)/(range[0].sup-range[0].inf);
+		float z_to_x = (range[2].sup-range[2].inf)/(range[0].sup-range[0].inf);
+		Y_GRID_RESOLUTION = y_to_x*X_GRID_RESOLUTION+0.5, Z_GRID_RESOLUTION = z_to_x*X_GRID_RESOLUTION+0.5;
+		X_GRID_STEP = (range[0].sup-range[0].inf)/float(X_GRID_RESOLUTION-1);
+		Y_GRID_STEP = (range[1].sup-range[1].inf)/float(Y_GRID_RESOLUTION-1);
+		Z_GRID_STEP = (range[2].sup-range[2].inf)/float(Z_GRID_RESOLUTION-1);
+	}
+
+	const int& totalBinSize = X_GRID_RESOLUTION*Y_GRID_RESOLUTION*Z_GRID_RESOLUTION;
+	const int& xy_multiplication = X_GRID_RESOLUTION*Y_GRID_RESOLUTION;
+
+	// the number of streamlines passing through the voxels
+	std::vector<int> passDensity(totalBinSize, 0);
+
+	Eigen::VectorXd streamline;
+	int pointNumber, prevVoxel, currentVoxel, x, y, z;
+	for (int i = 0; i < streamlineCount; ++i)
+	{
+		streamline = coordinates[i];
+		pointNumber = streamline.size()/3;
+		prevVoxel = -1;
+		// assign streamlines to the passed voxel by its points
+		for(int j=0; j<pointNumber; ++j)
+		{
+			// get the index of voxel that the point lies in
+			x = (streamline[3*j]-range[0].inf)/X_GRID_STEP;
+			y = (streamline[3*j+1]-range[1].inf)/Y_GRID_STEP;
+
+			if(is3D)
+				z = (streamline[3*j+2]-range[2].inf)/Z_GRID_STEP;
+			else
+				z = 0;
+			currentVoxel = z*xy_multiplication+y*X_GRID_RESOLUTION+x;
+
+			if(currentVoxel!=prevVoxel)
+				++passDensity[currentVoxel];
+
+			prevVoxel = currentVoxel;
+		}
+	}
+	
+	VTKWritter::printVolumeScalars(datasetName, passDensity, range, X_GRID_RESOLUTION, Y_GRID_RESOLUTION, Z_GRID_RESOLUTION, X_GRID_STEP, 
+	Y_GRID_STEP, Z_GRID_STEP);
 }

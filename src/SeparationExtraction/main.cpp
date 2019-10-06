@@ -4,6 +4,7 @@
  *  Created on: Jan 7, 2019
  *      Author: lieyu
  */
+#include <sys/time.h>
 #include "ReadData.h"
 #include "SeparationExtraction.h"
 
@@ -112,12 +113,21 @@ void performExtraction(VectorField& vf, SeparationExtraction& se)
 	int measurementOption;
 	std::cin >> measurementOption;
 
+	struct timeval start, end;
+	double timeTemp;
+	gettimeofday(&start, NULL);
+
 	if(measurementOption==1)
 		se.extractSeparationLinesByExpansion(vf.streamlineVector);
 	else if(measurementOption==2)
 		se.extractSeparationLinesByChiTest(vf.streamlineVector);
 	else if(measurementOption==3)
 		se.extractSeparationLinesBySegments(vf.streamlineVector);
+
+	// record the time for local scalar value calculation
+	gettimeofday(&end, NULL);
+	timeTemp = ((end.tv_sec  - start.tv_sec) * 1000000u + end.tv_usec - start.tv_usec) / 1.e6;
+	std::cout << "The time for separation estimate is " << timeTemp << " seconds!" << std::endl;
 
 	vf.writeSeparationToStreamlines(se.separationVector, string("Separation"));
 }

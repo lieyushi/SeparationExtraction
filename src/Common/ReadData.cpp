@@ -690,6 +690,12 @@ void VectorField::printStreamlinesVTK()
 		}
 	}
 
+	if(lineVelocity.empty())
+	{
+		fout.close();
+		return;
+	}
+
 	fout << "SCALARS velocity double 1" << std::endl;
 	fout << "LOOKUP_TABLE velocity_table" << std::endl;
 
@@ -734,6 +740,11 @@ void VectorField::uniformSeeding(std::vector<Vertex>& seeds, int& maxSeeding)
 		y_size = int(float(Y_RESOLUTION*x_size)/float(X_RESOLUTION));
 		z_size = int(float(Z_RESOLUTION*x_size)/float(X_RESOLUTION));
 		maxSeeding = x_size*y_size*z_size;
+		
+		/*
+		x_size = y_size = z_size = std::pow(maxSeeding, 1.0/3.0)+1;
+		maxSeeding = x_size*y_size*z_size;
+		*/
 	}
 	else	// for 2D data set, it will set z_size == 1
 	{
@@ -787,7 +798,7 @@ void VectorField::entropySeeding(std::vector<Vertex>& seeds, int& maxSeeding)
 
 	// Refining the grid
 	std::cout << "Entropy-based seeding begins..." << std::endl;
-	const int& X_SAMPLE = 100;
+	const int& X_SAMPLE = 256;
 	const int& Y_SAMPLE = X_SAMPLE*(float(Y_RESOLUTION)/float(X_RESOLUTION));	// to scale
 
 	const double& seed_step_x = (limits[0].sup-limits[0].inf)/(X_SAMPLE-1);
@@ -946,6 +957,10 @@ void VectorField::entropySeeding(std::vector<Vertex>& seeds, int& maxSeeding)
 			}
 		}
 	}
+
+	/* generate the entropy-based volume rendering */
+	VTKWritter::printVolumeScalars(dataset_name+"_entropy_", entropyVec, limits, X_SAMPLE, Y_SAMPLE, Z_SAMPLE,
+						seed_step_x, seed_step_y, seed_step_z);
 
 	// sampling w.r.t. probability based on scalar value on grid pints
 	double totalValue = 0.0;

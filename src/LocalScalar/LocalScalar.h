@@ -83,6 +83,9 @@ public:
 	/* sample on the voxels from discrete 3D points */
 	void sampleOnVoxels(const double& r, std::vector<double>& voxelScalars);
 
+	/* get the density-based voxeling information */
+	void getDensityVolume();
+
 
 private:
 
@@ -147,7 +150,7 @@ private:
 	bool is3D = false;
 
 	/* the max search times for direction-based */
-	const int& maxStep = 50;
+	const int& maxStep = 300;
 
 	// point-wise scalar value calculation on streamlines
 	std::vector<double> segmentScalars;

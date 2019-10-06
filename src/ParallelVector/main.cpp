@@ -23,14 +23,18 @@ int main(int argc, char* argv[])
 	VTKWritter::printVectorField(vf.dataset_name, vf.vertexVec, vf.limits, vf.X_RESOLUTION, vf.Y_RESOLUTION,
 			vf.Z_RESOLUTION, vf.X_STEP, vf.Y_STEP, vf.Z_STEP);
 
-	/*
 	ParallelVector pv(vf.dataset_name, vf.vertexVec, vf.limits, vf.X_RESOLUTION, vf.Y_RESOLUTION,
 						vf.Z_RESOLUTION, vf.X_STEP, vf.Y_STEP, vf.Z_STEP);
 
-	pv.performPVOperation();
+	pv.getJacobianOnGridPoints();
 
-	VTKWritter::printPoints(vf.dataset_name, pv.pvPointVec);
-	*/
+	pv.getDivergence();
+
+	// VTKWritter::printPoints(vf.dataset_name, pv.pvPointVec);
+
+	/* print the 3D volume rendering with scalar values */
+	VTKWritter::printVolumeScalars(vf.dataset_name, pv.divergenceVec, pv.limits, pv.X_RESOLUTION, pv.Y_RESOLUTION, pv.Z_RESOLUTION, 
+		pv.X_STEP, pv.Y_STEP, pv.Z_STEP);
 
 	return 0;
 }

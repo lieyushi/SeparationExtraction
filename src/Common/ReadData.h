@@ -16,6 +16,7 @@
 #include <eigen3/Eigen/SVD>
 #include <bits/stdc++.h>
 #include "DataSet.h"
+#include "VTKWritter.h"
 
 using namespace std;
 using namespace Eigen;
@@ -94,7 +95,7 @@ public:
 	double X_STEP = -1.0, Y_STEP = -1.0, Z_STEP = 1.0;
 
 	// the ratio to the diagonal distance for the distance threshold for generating streamlines far away enough
-	double minimal_ratio =  0.08;
+	double minimal_ratio = 0.2;
 	double MINIMAL;
 
 	// whether the data set is 3D or not. It decides whether to call 2D or 3D interpolation

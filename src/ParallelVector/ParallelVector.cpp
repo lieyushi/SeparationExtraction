@@ -447,3 +447,16 @@ bool ParallelVector::stayInDomain(const Eigen::Vector3d& point)
 	return true;
 }
 
+
+// get the divergence from Jacobian
+void ParallelVector::getDivergence()
+{
+	divergenceVec = std::vector<double>(vertexVec.size(), 0.0);
+
+#pragma omp parallel for schedule(static) num_threads(8)
+	for(int i=0; i<vertexVec.size(); ++i)
+	{
+		Eigen::Matrix3d& jacobian = JacobianGridVec[i];
+		divergenceVec[i] = abs(jacobian(0,0)+jacobian(1,1)+jacobian(2,2));
+	}
+}

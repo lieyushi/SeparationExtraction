@@ -27,5 +27,7 @@ int main(int argc, char* argv[])
 
 	ls.getLocalScalar();
 
+	//ls.getDensityVolume();
+
 	return 0;
 }

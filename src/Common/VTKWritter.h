@@ -55,6 +55,11 @@ public:
 	static void printVolumeScalars(const string& fileName, const std::vector<double>& scalarValues,
 			CoordinateLimits limits[], const int& x_resolution, const int& y_resolution, const int& z_resolution,
 						const double& x_step, const double& y_step, const double& z_step);
+
+	/* print the 3D volume rendering with scalar values */
+	static void printVolumeScalars(const string& fileName, const std::vector<int>& scalarValues,
+			CoordinateLimits limits[], const int& x_resolution, const int& y_resolution, const int& z_resolution,
+						const double& x_step, const double& y_step, const double& z_step);
 };
 
 #endif /* SRC_COMMON_VTKWRITTER_H_ */
